@@ -1,7 +1,7 @@
 ---
 title: "config.json — Language and Section Configuration"
 sidebarTitle: "Config File"
-description: "Learn how to create and structure the config.json file that tells the scraper which JW.ORG pages to target, organized by language and section."
+description: "Create and structure config.json to tell the scraper which JW.ORG video pages to target, organized by language name and section name."
 ---
 
 The `config.json` file is the single source of truth for the scraper. It maps every language and section name shown in the interactive prompts to the corresponding JW.ORG video library page URL that the tool will scrape. Without it the program cannot start, so it must be present in the **current working directory** from which you launch the executable.
@@ -13,6 +13,12 @@ The `config.json` file is the single source of truth for the scraper. It maps ev
 1. **Top-level keys** — language display names (e.g. `"English"`, `"Spanish"`). These are the exact strings presented to you during the _Select The Language_ prompt.
 2. **Second-level keys** — section names within that language (e.g. `"Season 1"`, `"Season 2"`). These are the strings presented during the _Select the Section To be Downloaded_ prompt.
 3. **Second-level values** — the full JW.ORG HTML page URL for that section's video grid. The scraper fetches this page, extracts the embedded JSON API links, and uses those to discover every downloadable video file.
+
+The C# type that `config.json` deserializes into is `Dictionary<string, Dictionary<string, string>>` — outer key is the language name, inner key is the section name, and inner value is the JW.ORG section URL.
+
+<Note>
+  The URLs shown in all examples on this page are **illustrative only**. They follow the pattern observed on JW.ORG but are not guaranteed to be accurate or stable. Always copy the URL directly from your browser's address bar when viewing the section you want to scrape.
+</Note>
 
 ```json config.json
 {
@@ -35,7 +41,7 @@ The `config.json` file is the single source of truth for the scraper. It maps ev
 
 ## Field Reference
 
-<ParamField path="[language]" type="string" required>
+<ParamField path="[language]" type="object" required>
   The display name for a language group (e.g. `"English"`, `"Spanish"`). This string is shown verbatim in the _Select The Language_ interactive prompt. Use any label that is meaningful to you — the tool does not validate it against a fixed list.
 </ParamField>
 
@@ -43,15 +49,15 @@ The `config.json` file is the single source of truth for the scraper. It maps ev
   The display name for a section within the language (e.g. `"Season 1"`, `"Season 2"`). This string appears in both the _Select the Section To be Downloaded_ prompt and, when **Grouped** path mode is active, as the name of the subdirectory where that section's videos are saved.
 </ParamField>
 
-<ParamField path="[language][section]" type="string (URL)" required>
-  The full JW.ORG video library page URL for the section. The scraper loads this HTML page and parses every `data-jsonurl` attribute it finds inside `.du-margin-children-vertical-desktopOnly--0` container elements. Each discovered JSON URL is then fetched to retrieve the complete file listing for a single video. Use the URL exactly as it appears in your browser's address bar when you are viewing that category page on JW.ORG.
+<ParamField path="[language][section] (URL value)" type="string" required>
+  The full JW.ORG video library page URL for the section. The scraper loads this HTML page and parses every `data-jsonurl` attribute it finds inside `.du-margin-children-vertical-desktopOnly--0` container elements. Each discovered JSON URL is then fetched to retrieve the complete file listing for a single video. Copy the URL exactly as it appears in your browser's address bar when you are viewing that category page on JW.ORG.
 </ParamField>
 
 ## URL Format
 
 All URLs must point to a JW.ORG video library category page — the kind that renders a grid of video thumbnails. A typical URL looks like:
 
-```
+```text
 https://www.jw.org/en/library/videos/#en/categories/<CATEGORY_ID>/<SUBCATEGORY>
 ```
 
@@ -73,7 +79,9 @@ Dictionary<string, Dictionary<string, string>>? config =
 if (config is null) return;
 ```
 
-Internally, `ConfigurationService.GetConfig()` reads the file from the current working directory and deserializes it with `System.Text.Json`:
+The constant `configFile` is `"config.json"`, resolved against the **current working directory** when the executable is launched.
+
+Internally, `ConfigurationService.GetConfig()` reads the file and deserializes it with `System.Text.Json`:
 
 ```csharp
 public async Task<Dictionary<string, Dictionary<string, string>>?> GetConfig(
@@ -88,7 +96,7 @@ public async Task<Dictionary<string, Dictionary<string, string>>?> GetConfig(
 }
 ```
 
-If the file is absent, unreadable, or not valid JSON, `config` will be `null`. The error **"No Config File Found"** is logged at `Error` level and the program exits immediately — no interactive prompts are shown.
+If `JsonSerializer.Deserialize` returns `null` (for example, when the file content is the JSON literal `null`), the error **"No Config File Found"** is logged at `Error` level, `GetConfig` returns `null`, and `Program.cs` exits immediately — no interactive prompts are shown.
 
 <Warning>
   The file **must** be named exactly `config.json` and placed in the same directory from which you run the executable. If you launch the tool from a different working directory, the file will not be found even if it exists elsewhere on your system.

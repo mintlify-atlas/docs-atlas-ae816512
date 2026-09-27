@@ -1,5 +1,5 @@
 ---
-title: "Get Started with JW Enjoy Life Scraper"
+title: "JW Enjoy Life Scraper: Quickstart Guide for New Users"
 sidebarTitle: "Quickstart"
 description: "Clone the repo, publish a self-contained binary, drop in a config.json, and run your first bulk Enjoy Life video download in under five minutes."
 ---
@@ -141,8 +141,7 @@ dotnet --version
         Unit 2
 
     > Select The Resolution:
-        3GP: 312.5 MB
-        240p: 680.3 MB
+        240p: 680.3 MB     ← example labels and sizes
         360p: 1.2 GB
         480p: 2.1 GB
         720p: 4.4 GB
@@ -163,7 +162,7 @@ dotnet --version
     ```
 
     <Tip>
-      On the resolution prompt, the sizes shown are the **sum of all video files** at that resolution for your selected section(s). This lets you gauge disk space requirements before committing to a download.
+      On the resolution prompt, the sizes shown are the **sum of all video files** at that resolution for your selected section(s). This lets you gauge disk space requirements before committing to a download. The exact resolution labels (e.g. `240p`, `360p`, `720p`) are returned dynamically by the JW.ORG API and may vary by publication — the sizes shown above are illustrative examples only.
     </Tip>
 
     Once the download completes, your videos are in the `files/` directory (or whichever path you specified). A `.cache/` directory is also created alongside the executable to store HTTP responses for faster re-runs.
@@ -186,10 +185,10 @@ After your first run you will notice two new directories beside your executable:
 For a full reference on all `config.json` options and detailed build instructions for every platform, see the pages below.
 
 <CardGroup cols={2}>
-  <Card title="Installation" icon="wrench" href="/installation">
+  <Card title="Installation" icon="wrench" href="installation">
     Full build-from-source and publish instructions with a Runtime Identifier reference table for all supported platforms.
   </Card>
-  <Card title="Introduction" icon="book-open" href="/introduction">
+  <Card title="Introduction" icon="book-open" href="introduction">
     Learn about every feature the tool offers and how the three-stage scrape-configure-download pipeline works under the hood.
   </Card>
 </CardGroup>

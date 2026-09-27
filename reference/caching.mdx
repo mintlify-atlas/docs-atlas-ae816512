@@ -1,12 +1,12 @@
 ---
 title: "Disk caching — how the scraper avoids redundant requests"
 sidebarTitle: "Caching"
-description: "How CacheService stores HTML, JSON, and video files under .cache/ using SHA-256 keys, and how each cache method checks for existing data before making any network request."
+description: "How CacheService stores HTML, JSON, and video files under .cache/ using SHA-256 keys, and how each method avoids redundant network requests on re-runs."
 ---
 
 `CacheService` sits between the `WebScraper` and the network: every HTML page, JSON API response, and binary video file is stored on disk the first time it is fetched. On subsequent runs, the scraper reads from disk instead of making a network request. This makes re-runs near-instant for content that has already been scraped, and it means interrupted downloads can resume without re-fetching already-cached responses.
 
-The cache lives in a `.cache/` directory created automatically in the current working directory when `CacheService` is constructed. The constructor calls `IFileService.CreateDirectory(".cache")`, which is a no-op if the directory already exists.
+The cache lives in a `.cache/` directory created automatically in the current working directory when `CacheService` is constructed. The constructor calls `fileService.CreateDirectory(_cacheDir)` — where `_cacheDir` is the directory path passed to the constructor (set to `".cache"` by `Program.cs`). `Directory.CreateDirectory` is a no-op if the directory already exists.
 
 ---
 
@@ -164,7 +164,7 @@ The function returns a 64-character lowercase hexadecimal string. A file extensi
 
 After a typical run, the `.cache/` directory contains a mix of `.txt`, `.json`, and extension-less files:
 
-```
+```text
 .cache/
 ├── 3f2a1c...d8e4.txt          # HTML body of a JW.ORG section page
 ├── 7b09fa...12cc.txt          # HTML body of another section page
@@ -176,7 +176,7 @@ After a typical run, the `.cache/` directory contains a mix of `.txt`, `.json`, 
 
 Downloaded video files are **not** stored in `.cache/` — they are written directly to the user-chosen output directory (default: `files/` in the working directory).
 
-```
+```text
 files/
 ├── Lesson 01 - Why Are We Here.mp4
 ├── Lesson 02 - Who Is God.mp4

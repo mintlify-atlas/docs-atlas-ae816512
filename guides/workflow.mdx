@@ -78,14 +78,15 @@ Every run of the JW Enjoy Life Scraper follows the same linear pipeline: read yo
     A live progress bar labelled **"HTML Progress:"** updates as each section completes.
 
     <Note>
-      All three scraping stages share the same `ParallelOptions` instance, which sets `MaxDegreeOfParallelism = 8`. Up to eight section URLs are fetched concurrently.
+      All three pipeline stages share the same `ParallelOptions` instance, which sets `MaxDegreeOfParallelism = 8`. Up to eight network operations run concurrently at any time across all stages.
     </Note>
   </Step>
 
   <Step title="Stage 2 — JSON scraping">
-    `WebScraper.ScrapeJsonResponseFromUrls(jsonUrls)` calls each API URL discovered in Stage 1 to retrieve structured video metadata.
+    `WebScraper.ScrapeJsonResponseFromUrls(jsonUrls)` calls `CacheService.GetJson<JsonResponse>()` for each API URL discovered in Stage 1 **in parallel**, retrieving structured video metadata for every publication.
 
-    - `CacheService.GetJson<JsonResponse>(url)` is used for each URL; responses are cached as `.json` files under `.cache/` so they are not re-fetched on subsequent runs.
+    - URLs within each section are fetched concurrently via `ParallelHelper` (`Parallel.ForEachAsync`); sections themselves are processed sequentially so progress tracking remains accurate.
+    - Responses are cached as `.json` files under `.cache/` so they are not re-fetched on subsequent runs.
     - Each `JsonResponse` contains publication details and a `Files` dictionary whose values hold `FileDetail` objects listing every available `MovieDetail` (one per resolution).
 
     A **"JSON Progress:"** bar tracks completion across all sections in aggregate.
@@ -154,7 +155,7 @@ Every run of the JW Enjoy Life Scraper follows the same linear pipeline: read yo
   </Step>
 
   <Step title="Stage 3 — Downloading">
-    `WebScraper.DownloadAllFiles()` iterates each section's list of `JsonResponse` objects, picks the `MovieDetail` whose `Label` matches the selected resolution, and calls `CacheService.Download()` for each video.
+    `WebScraper.DownloadAllFiles()` iterates each section's list of `JsonResponse` objects. For each response it navigates `Files.Values.FirstOrDefault()?.MovieMp4S`, filters to the `MovieDetail` where `Label == resolution`, and calls `CacheService.Download()` to stream that video to disk.
 
     - `CacheService.Download()` checks whether a file already exists **and** has the expected byte length (`FileInfo.Exists && FileInfo.Length == fileSize`). If both conditions are true, the file is skipped entirely.
     - Otherwise the video is streamed from the URL via `HttpClient.DownloadStream()` and written to disk with `FileStream.CopyToAsync()`.

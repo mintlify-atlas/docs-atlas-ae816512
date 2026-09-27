@@ -18,8 +18,8 @@ JW Enjoy Life Scraper is a command-line tool built with C# and .NET 9 that autom
   <Card title="Parallel Scraping" icon="bolt">
     HTML scraping, JSON fetching, and file downloads all run with up to **8 concurrent threads** via `Parallel.ForEachAsync`, dramatically reducing total download time.
   </Card>
-  <Card title="Five Resolution Options" icon="film">
-    Choose from **3GP, 240p, 360p, 480p, or 720p**. Before you commit, the tool totals the estimated download size for every resolution so you can make an informed choice.
+  <Card title="Dynamic Resolution Options" icon="film">
+    Available resolutions are discovered live from the JW.ORG API's `label` field — the exact options depend on what the API returns for each publication. Before you commit, the tool totals the estimated download size for each available resolution so you can make an informed choice.
   </Card>
   <Card title="Two Naming Modes" icon="tag">
     **JwLibrary** mode keeps the original JW.ORG filename (URL path). **Simple** mode renames each file to the video's human-readable title plus the original extension.
@@ -64,10 +64,10 @@ The tool runs in three distinct stages each time you launch it.
 ## Next Steps
 
 <CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/quickstart">
+  <Card title="Quickstart" icon="rocket" href="quickstart">
     Clone the repo, build the binary, create your first `config.json`, and run your first download in minutes.
   </Card>
-  <Card title="Installation" icon="wrench" href="/installation">
+  <Card title="Installation" icon="wrench" href="installation">
     Detailed build-from-source and single-file publish instructions, with a full Runtime Identifier reference table.
   </Card>
 </CardGroup>

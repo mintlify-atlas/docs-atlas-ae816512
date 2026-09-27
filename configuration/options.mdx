@@ -1,10 +1,10 @@
 ---
 title: "Runtime Options — Resolution, Naming, and Download Path"
 sidebarTitle: "Options"
-description: "A complete reference for every interactive prompt the CLI presents at startup: language, section, resolution, target directory, file name style, and path grouping."
+description: "Reference for every interactive prompt the CLI presents at runtime: language, section, resolution, target directory, file name style, and path grouping."
 ---
 
-After `config.json` is validated, the CLI presents a sequence of interactive prompts that control exactly what gets downloaded and where it ends up. None of these require command-line flags — the tool walks you through each choice in order. This page documents every prompt, the values it accepts, and the effect each choice has on the resulting files.
+After `config.json` is validated, the CLI presents a sequence of interactive prompts that control exactly what gets downloaded and where it ends up. None of these require command-line flags or environment variables — the tool walks you through each choice in order. This page documents every prompt, the exact strings it displays, the values it accepts, and the effect each choice has on the resulting files.
 
 ## Prompt Sequence
 
@@ -14,7 +14,7 @@ After `config.json` is validated, the CLI presents a sequence of interactive pro
 
 The first prompt reads all top-level keys from `config.json` and asks you to choose one:
 
-```
+```text
 Select The Language:
   > English
     Spanish
@@ -25,9 +25,9 @@ The selected language name is used to look up the corresponding section map in `
 
 ### Select Section
 
-Once the HTML and JSON for every section in the chosen language has been scraped, the tool presents the section selection prompt. The available options are always `"All"` followed by the section names from `config.json`, sorted alphabetically:
+Once the HTML and JSON for every section in the chosen language has been scraped, the tool presents the section selection prompt. The available options are always `"All"` first, followed by the successfully scraped section names sorted alphabetically:
 
-```
+```text
 Select the Section To be Downloaded:
   > All
     Season 1
@@ -35,17 +35,17 @@ Select the Section To be Downloaded:
     Season 3
 ```
 
+The options list is built as `["All", .. jsonResponseFromUrls.Keys.Order()]` — that is, the fixed string `"All"` prepended to the alphabetically ordered keys returned from the scraping phase. A section only appears here if its URL was successfully scraped; sections whose requests failed are omitted.
+
 <Note>
-  Choosing **All** causes every section in the selected language to be downloaded in a single run. Choosing a named section restricts the download to that section only.
+  Choosing **All** causes every successfully scraped section in the selected language to be downloaded in a single run. Choosing a named section restricts the download to that section only.
 </Note>
 
 ### Select Resolution
 
-The scraper inspects all fetched `JsonResponse` objects and aggregates the available `MovieDetail.Label` values (the resolution labels embedded in JW.ORG's JSON API) together with the cumulative `MovieDetail.FileSize` for each label. `Helper.GenerateMetadata()` builds this map, and `Helper.FormatFileSize()` converts raw byte totals into a human-readable string.
+The scraper inspects all fetched `JsonResponse` objects and aggregates the available `MovieDetail.Label` values (the resolution labels embedded in JW.ORG's JSON API) together with the cumulative `MovieDetail.FileSize` for each label. `Helper.GenerateMetadata()` sums `FileSize` per `Label`, and `Helper.FormatFileSize()` converts raw byte totals into a human-readable string. The prompt displays each entry as `"<label>: <formatted size>"`:
 
-The prompt lists each resolution alongside its estimated total download size:
-
-```
+```text
 Select The Resolution:
   > 3gp: 148.32 MB
     240p: 1.04 GB
@@ -54,25 +54,25 @@ Select The Resolution:
     720p: 9.61 GB
 ```
 
-Common resolution labels returned by JW.ORG are:
+<Note>
+  Resolution labels are **dynamic** — they come directly from `MovieDetail.Label` in JW.ORG's API response for the chosen language and season. The labels shown above (`3gp`, `240p`, `360p`, `480p`, `720p`) are common examples only. Not every label is guaranteed to be present for every section, and new labels may appear if JW.ORG changes its encoding options.
+</Note>
+
+Common resolution labels returned by JW.ORG:
 
 | Label | Typical use |
 |-------|-------------|
 | `3gp`  | Very low-bandwidth / older mobile devices |
-| `240p` | Low resolution (240 × 180) |
-| `360p` | Standard definition (360 × 270) |
-| `480p` | Enhanced standard definition (480 × 360) |
-| `720p` | High definition (1280 × 720) |
-
-<Note>
-  The labels and their availability depend entirely on what JW.ORG exposes for the chosen language and season. Not every resolution is guaranteed to be present for every section.
-</Note>
+| `240p` | Low resolution |
+| `360p` | Standard definition |
+| `480p` | Enhanced standard definition |
+| `720p` | High definition |
 
 ### Target Directory
 
 A free-text prompt accepts an absolute or relative file system path. Leaving it empty is allowed:
 
-```
+```text
 What is the directory to store the files(empty is the current directory)?
 ```
 
@@ -100,7 +100,7 @@ return Directory.Exists(targetDirPrompt)
 
 Controls how each downloaded video file is named on disk.
 
-```
+```text
 Select The File Name Type:
   > JW Library Style (Difficult to Read File Name)
     Simple (Easy to Read File Name)
@@ -109,7 +109,7 @@ Select The File Name Type:
 <ParamField path="DownloadFileNameType.JwLibrary" type="enum">
   Uses the original filename extracted from the JW.ORG download URL path — the same filename that JW Library itself uses when it syncs a publication. Example:
 
-  ```
+  ```text
   jwb-080_E_eljj_01_r240P.mp4
   jwb-080_E_eljj_02_r240P.mp4
   ```
@@ -120,7 +120,7 @@ Select The File Name Type:
 <ParamField path="DownloadFileNameType.Simple" type="enum">
   Uses `MovieDetail.Title` from the JSON API response, appended with the original file extension. Example:
 
-  ```
+  ```text
   Lesson 1 - Welcome.mp4
   Lesson 2 - The Family.mp4
   ```
@@ -132,7 +132,7 @@ Select The File Name Type:
 
 Controls whether videos are placed in a flat directory or organised into subdirectories per section.
 
-```
+```text
 Select The File Path Type:
   > JW Library Style (Videos divided by Section [config])
     Simple (All Videos in one Directory)
@@ -141,7 +141,7 @@ Select The File Path Type:
 <ParamField path="DownloadFilePathType.Grouped" type="enum">
   Each section's videos are placed inside a subdirectory named after the section key from `config.json`. Given a target directory of `./files/` and sections `Season 1` and `Season 2`, the layout becomes:
 
-  ```
+  ```text
   files/
   ├── Season 1/
   │   ├── jwb-080_E_eljj_01_r240P.mp4
@@ -155,7 +155,7 @@ Select The File Path Type:
 <ParamField path="DownloadFilePathType.Simple" type="enum">
   All videos, regardless of section, are written directly into the target directory:
 
-  ```
+  ```text
   files/
   ├── jwb-080_E_eljj_01_r240P.mp4
   ├── jwb-080_E_eljj_02_r240P.mp4
@@ -185,7 +185,7 @@ Select The File Path Type:
     | File Path Type | `JW Library Style (Videos divided by Section [config])` |
 
     **Result:**
-    ```
+    ```text
     files/
     └── Season 1/
         ├── jwb-080_E_eljj_01_r240P.mp4
@@ -203,7 +203,7 @@ Select The File Path Type:
     | File Path Type | `Simple (All Videos in one Directory)` |
 
     **Result:**
-    ```
+    ```text
     files/
     ├── Lesson 1 - Welcome.mp4
     ├── Lesson 2 - The Family.mp4
@@ -221,7 +221,7 @@ Select The File Path Type:
     | File Path Type | `JW Library Style (Videos divided by Section [config])` |
 
     **Result:**
-    ```
+    ```text
     files/
     ├── Season 1/
     │   ├── Lesson 1 - Welcome.mp4

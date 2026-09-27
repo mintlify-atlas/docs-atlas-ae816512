@@ -31,11 +31,12 @@ The naming mode is selected at the **"Select The File Name Type:"** prompt and m
   </Tab>
   <Tab title="Simple">
     ```csharp
-    string fileName = video.Title + Path.GetExtension(new Uri(video.File.Url).AbsolutePath);
+    string urlPath = new Uri(video.File.Url).AbsolutePath;
+    string fileName = video.Title + Path.GetExtension(urlPath);
     // e.g. "Let Us Learn to Worship Jehovah.mp4"
     ```
 
-    The filename is built from `MovieDetail.Title` (the human-readable video title from the API metadata) combined with the file extension extracted from the URL.
+    The URL is first parsed into a `Uri` and its `AbsolutePath` stored as `urlPath`. The filename is then built from `MovieDetail.Title` (the human-readable video title from the API metadata) combined with the extension extracted from `urlPath`.
 
     **Result:** filenames are immediately legible without any lookup table, for example:
 

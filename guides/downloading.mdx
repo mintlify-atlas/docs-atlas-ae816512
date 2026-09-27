@@ -25,7 +25,7 @@ JsonResponse
 `DownloadAllFiles` calls `x.Files.Values.FirstOrDefault()` to obtain the `FileDetail` for the response's primary language key, then calls `.MovieMp4S.FirstOrDefault(movie => movie.Label == resolution)` to find the `MovieDetail` whose `Label` property matches the resolution string you selected (e.g. `"240p"`, `"720p"`, or `"3gp"`).
 
 <Note>
-  3GP videos live in `Movie3Gps` on the `FileDetail` object, but the current download loop reads from `MovieMp4S` only. The `"3gp"` label therefore appears in size estimates when `GenerateMetadata` scans `MovieMp4S` entries — select it only if the API surface for your language includes 3GP entries in that list.
+  Both `DownloadAllFiles` and `GenerateMetadata` read exclusively from `FileDetail.MovieMp4S` (the `"MP4"` JSON key). The `FileDetail` type also exposes `Movie3Gps` (the `"3GP"` JSON key), but neither method accesses it. Any `"3gp"` label that appears in the resolution prompt comes from a `MovieDetail` entry inside `MovieMp4S` whose `Label` property is set to `"3gp"` by the JW media API — the downloaded file is still served as an MP4 container.
 </Note>
 
 ### File writing via CacheService
@@ -74,7 +74,7 @@ The error action logs the section name, exception message, and failing URL at `I
 
 | Resolution | Container | Approx. size per video | Best for |
 |---|---|---|---|
-| `3gp` | 3GP | ~10–25 MB | Mobile devices, very low bandwidth |
+| `3gp` | MP4 | ~10–25 MB | Mobile devices, very low bandwidth |
 | `240p` | MP4 | ~20–50 MB | Low storage, offline verification runs |
 | `360p` | MP4 | ~50–100 MB | Balanced quality and size |
 | `480p` | MP4 | ~80–150 MB | Standard quality, most screens |

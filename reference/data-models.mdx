@@ -1,5 +1,5 @@
 ---
-title: "Data models — JW.ORG API response DTOs"
+title: "Data models — JW.ORG API DTO classes full reference"
 sidebarTitle: "Data Models"
 description: "Reference for the six DTO classes that model JW.ORG's internal media API JSON: JsonResponse, FileDetail, MovieDetail, File, PubImage, and LanguageDetail."
 ---
@@ -335,7 +335,7 @@ public class LanguageDetail
 
 The following diagram shows how the six DTOs nest inside each other as deserialized from the API.
 
-```
+```text
 JsonResponse
 ├── PubImage                         (cover image)
 ├── Languages: Dictionary<string, LanguageDetail>

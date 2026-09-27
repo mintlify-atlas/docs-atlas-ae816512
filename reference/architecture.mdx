@@ -1,5 +1,5 @@
 ---
-title: "Architecture overview of JW Enjoy Life Scraper"
+title: "Architecture overview — JW Enjoy Life Scraper .NET 9"
 sidebarTitle: "Architecture"
 description: "Explore the two-project solution structure, service layers, DTO layout, concurrency model, and NuGet dependencies of the JW Enjoy Life Scraper."
 ---
@@ -8,7 +8,7 @@ The JW Enjoy Life Scraper is organized as a .NET 9 solution (`WebsiteMediaScrape
 
 ## Solution structure
 
-```
+```text
 WebsiteMediaScraper.sln
 ├── Lib/                        # Class library (net9.0)
 │   ├── Interfaces/             # IWebScraper, ICacheService, IHttpClient, IFileService, ILogger
@@ -97,8 +97,8 @@ The `Lib/Dto/` namespace contains six classes that mirror the JSON structure ret
 
 **`EnumHelper`** (static class):
 - `GetEnumValuesAsStringList<T>()` — returns all enum values as strings, preferring `[EnumMember(Value = "...")]` over the member name.
-- `GetEnumStringValue<T>(T)` — string representation of a single enum value.
-- `GetEnumValueFromString<T>(string)` — reverse lookup from `EnumMemberAttribute.Value` to enum value.
+- `GetEnumStringValue<T>(T enumValue)` — string representation of a single enum value.
+- `GetEnumValueFromString<T>(string value)` — reverse lookup from `EnumMemberAttribute.Value` to enum value.
 </Accordion>
 
 ## Concurrency model
