@@ -1,0 +1,242 @@
+---
+title: "Install and Build JW Enjoy Life Scraper"
+sidebarTitle: "Installation"
+description: "Step-by-step instructions to build JW Enjoy Life Scraper from source or publish a self-contained single-file executable for Windows, Linux, or macOS."
+---
+
+JW Enjoy Life Scraper is distributed as source code and built locally using the .NET 9 SDK. There is no pre-built release binary to download — you compile it once for your target platform and the result is a single self-contained executable you can run anywhere without an installed .NET runtime. This page covers both a quick development build and a production single-file publish.
+
+## Prerequisites
+
+You need the following tools installed before you begin.
+
+<CardGroup cols={2}>
+  <Card title=".NET 9 SDK" icon="code">
+    Download from [dot.net](https://dotnet.microsoft.com/download/dotnet/9.0). Verify with `dotnet --version` — the output must start with `9.0`.
+  </Card>
+  <Card title="Git" icon="code-branch">
+    Used to clone the repository. Verify with `git --version`. Available at [git-scm.com](https://git-scm.com) or via your OS package manager.
+  </Card>
+</CardGroup>
+
+<Warning>
+  The .NET SDK is only required on the machine where you **build** the tool. The published single-file executable is fully self-contained and can be copied to any machine of the same OS/architecture without installing .NET there.
+</Warning>
+
+---
+
+## Build Approaches
+
+<Tabs>
+  <Tab title="Build from Source">
+    This approach produces a standard .NET output with separate `.dll` files. It is fastest for development and testing on your own machine where the .NET 9 runtime is already present.
+
+    <Steps>
+      <Step title="Clone the Repository">
+        ```bash
+        git clone https://github.com/ekottifiok/jw-enjoy-life-scraper.git
+        cd jw-enjoy-life-scraper
+        ```
+      </Step>
+
+      <Step title="Restore NuGet Packages">
+        ```bash
+        dotnet restore
+        ```
+
+        This downloads all declared dependencies:
+
+        | Package | Version | Project |
+        |---|---|---|
+        | HtmlAgilityPack | 1.12.1 | `Lib` |
+        | RestSharp | 112.1.0 | `Lib` |
+        | Spectre.Console | 0.50.0 | `Console` |
+      </Step>
+
+      <Step title="Build in Release Configuration">
+        ```bash
+        dotnet build Console/Console.csproj -c Release
+        ```
+
+        The compiled output is placed under:
+
+        ```
+        Console/bin/Release/net9.0/
+        ```
+      </Step>
+
+      <Step title="Run the Built Binary">
+        ```bash
+        dotnet run --project Console/Console.csproj -c Release
+        ```
+
+        Or invoke the compiled executable directly:
+
+        <Tabs>
+          <Tab title="macOS / Linux">
+            ```bash
+            ./Console/bin/Release/net9.0/Console
+            ```
+          </Tab>
+          <Tab title="Windows">
+            ```powershell
+            .\Console\bin\Release\net9.0\Console.exe
+            ```
+          </Tab>
+        </Tabs>
+      </Step>
+    </Steps>
+  </Tab>
+
+  <Tab title="Publish Single-File Executable">
+    This is the recommended approach for deployment. It bundles the .NET runtime and all dependencies into one executable file. The `PublishSingleFile=true` property is already declared in `Console/Console.csproj`, so you only need to supply the target Runtime Identifier (RID).
+
+    <Steps>
+      <Step title="Clone the Repository">
+        ```bash
+        git clone https://github.com/ekottifiok/jw-enjoy-life-scraper.git
+        cd jw-enjoy-life-scraper
+        ```
+      </Step>
+
+      <Step title="Publish for Your Target Platform">
+        Run the following command, replacing `<RID>` with the identifier for your target OS and CPU (see the [Runtime Identifier table](#runtime-identifier-reference) below):
+
+        ```bash
+        dotnet publish Console/Console.csproj -c Release -r <RID> --self-contained
+        ```
+
+        Examples:
+
+        <CodeGroup>
+          ```bash macOS (Apple Silicon)
+          dotnet publish Console/Console.csproj -c Release -r osx-arm64 --self-contained
+          ```
+
+          ```bash Linux (x64)
+          dotnet publish Console/Console.csproj -c Release -r linux-x64 --self-contained
+          ```
+
+          ```bash Windows (x64)
+          dotnet publish Console/Console.csproj -c Release -r win-x64 --self-contained
+          ```
+        </CodeGroup>
+
+        The output is written to:
+
+        ```
+        Console/bin/Release/net9.0/<RID>/publish/
+        ```
+
+        That folder contains **one executable file** (e.g. `Console` on macOS/Linux, `Console.exe` on Windows) alongside nothing else that you need to distribute.
+      </Step>
+
+      <Step title="Copy the Binary to Your Working Directory">
+        Move or copy the executable to wherever you want to run it from. Make sure `config.json` is in the same directory.
+
+        <Tabs>
+          <Tab title="macOS / Linux">
+            ```bash
+            cp Console/bin/Release/net9.0/osx-arm64/publish/Console ~/tools/jw-scraper
+            chmod +x ~/tools/jw-scraper
+            ```
+          </Tab>
+          <Tab title="Windows">
+            ```powershell
+            Copy-Item Console\bin\Release\net9.0\win-x64\publish\Console.exe C:\Tools\jw-scraper\Console.exe
+            ```
+          </Tab>
+        </Tabs>
+      </Step>
+    </Steps>
+
+    <Tip>
+      Because `--self-contained` is specified, the .NET 9 runtime is bundled inside the binary. You can copy this single file to a machine with no .NET installation and it will run without any additional setup.
+    </Tip>
+  </Tab>
+</Tabs>
+
+---
+
+## Runtime Identifier Reference
+
+Use one of the following RID values with the `-r` flag during `dotnet publish`.
+
+| Operating System | Architecture | RID |
+|---|---|---|
+| Windows | x64 (Intel/AMD) | `win-x64` |
+| Windows | ARM64 | `win-arm64` |
+| Linux | x64 (Intel/AMD) | `linux-x64` |
+| Linux | ARM64 (e.g. Raspberry Pi 4) | `linux-arm64` |
+| macOS | x64 (Intel) | `osx-x64` |
+| macOS | ARM64 (Apple Silicon M-series) | `osx-arm64` |
+
+<Note>
+  You can cross-compile from any platform to any target. For example, you can run `dotnet publish -r linux-arm64` on a Windows machine and produce a valid Linux ARM binary. No emulation or virtual machine is required.
+</Note>
+
+---
+
+## Running for the First Time
+
+After placing the binary in your desired location, run it directly or add its parent directory to your system `PATH` for convenient access from anywhere.
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    ```bash
+    # Run directly from the current directory
+    ./Console
+
+    # Or add to PATH (add this line to ~/.zshrc or ~/.bashrc)
+    export PATH="$PATH:/path/to/directory/containing/binary"
+    ```
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    # Run directly
+    .\Console.exe
+
+    # Or add the directory to your PATH via System Properties > Environment Variables
+    ```
+  </Tab>
+</Tabs>
+
+---
+
+## Runtime Directories
+
+The tool creates the following directories automatically on first run, relative to its **working directory** (the directory from which you launch the executable):
+
+<Accordion title=".cache/ — HTTP response cache">
+  All HTML pages and JSON API responses fetched from JW.ORG are stored here as SHA-256-keyed files (`.txt` for HTML, `.json` for API responses). On subsequent runs, cached content is served from disk and no network request is made for those URLs. You can safely delete this directory to force a full re-fetch.
+</Accordion>
+
+<Accordion title="files/ — Downloaded video files">
+  This is the default output directory for downloaded video files when you press Enter at the directory prompt without typing a path. If you specify a custom path, that directory is used instead and `files/` is not created. In **Grouped** path mode, the tool creates a subdirectory inside `files/` (or your custom directory) for each section defined in `config.json`.
+</Accordion>
+
+---
+
+## Configuration File
+
+The tool requires a `config.json` file to be present in its **working directory** when it starts. If the file is missing or cannot be deserialized, the tool exits with an error and does not proceed.
+
+<Warning>
+  `config.json` must live in the **same directory from which you run the executable**, not necessarily the same directory as the binary itself. If you launch the binary from `/home/user/downloads/`, the tool looks for `/home/user/downloads/config.json`.
+</Warning>
+
+A minimal valid `config.json` looks like this:
+
+```json
+{
+  "English": {
+    "Unit 1": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtMorn/VODPgmEvtMornUnit1/",
+    "Unit 2": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtMorn/VODPgmEvtMornUnit2/"
+  },
+  "Spanish": {
+    "Unidad 1": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtMorn/VODPgmEvtMornUnit1/"
+  }
+}
+```
+
+For a full explanation of the config structure, see the [Quickstart](/quickstart) page.

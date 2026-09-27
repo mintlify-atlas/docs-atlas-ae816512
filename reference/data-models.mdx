@@ -1,0 +1,350 @@
+---
+title: "Data models — JW.ORG API response DTOs"
+sidebarTitle: "Data Models"
+description: "Reference for the six DTO classes that model JW.ORG's internal media API JSON: JsonResponse, FileDetail, MovieDetail, File, PubImage, and LanguageDetail."
+---
+
+The `Lib/Dto/` namespace contains six classes that model the JSON structure returned by JW.ORG's internal media API. They are populated exclusively through `System.Text.Json` deserialization inside `CacheService.GetJson<JsonResponse>()` and then passed through `WebScraper.ScrapeJsonResponseFromUrls()` and `WebScraper.DownloadAllFiles()`. Where a C# property name differs from the JSON field name, a `[JsonPropertyName]` attribute provides the mapping.
+
+---
+
+## JsonResponse
+
+`JsonResponse` is the top-level object deserialized from each JW.ORG media API endpoint. It carries publication metadata alongside maps of available languages and per-language file lists.
+
+```csharp
+public class JsonResponse
+{
+    public required string PubName { get; set; }
+    public required string ParentPubName { get; set; }
+    public required string BookNum { get; set; }
+    public required string Pub { get; set; }
+    public required string Issue { get; set; }
+    public required string FormattedDate { get; set; }
+    [JsonPropertyName("Fileformat")] public string[] FileFormat { get; set; } = [];
+    public int? Track { get; set; }
+    public required string Specialty { get; set; }
+    public required PubImage PubImage { get; set; }
+    public required Dictionary<string, LanguageDetail> Languages { get; set; }
+    public required Dictionary<string, FileDetail> Files { get; set; }
+}
+```
+
+<ResponseField name="PubName" type="string" required>
+  The display name of the publication (e.g. `"Enjoy Life Forever!"`).
+</ResponseField>
+
+<ResponseField name="ParentPubName" type="string" required>
+  The display name of the parent publication, if this item belongs to a series.
+</ResponseField>
+
+<ResponseField name="BookNum" type="string" required>
+  Numeric book identifier as a string.
+</ResponseField>
+
+<ResponseField name="Pub" type="string" required>
+  Short publication code used in JW.ORG internal references (e.g. `"lffi"`).
+</ResponseField>
+
+<ResponseField name="Issue" type="string" required>
+  Issue identifier string. Empty for non-periodical publications.
+</ResponseField>
+
+<ResponseField name="FormattedDate" type="string" required>
+  Human-readable publication date string.
+</ResponseField>
+
+<ResponseField name="FileFormat" type="string[]">
+  Array of available file format strings (e.g. `["MP4", "3GP"]`). JSON field name is `"Fileformat"`. Defaults to an empty array.
+</ResponseField>
+
+<ResponseField name="Track" type="int?">
+  Track number for the publication. Nullable; absent from the JSON for non-track publications.
+</ResponseField>
+
+<ResponseField name="Specialty" type="string" required>
+  Specialty category code.
+</ResponseField>
+
+<ResponseField name="PubImage" type="PubImage" required>
+  Publication cover image descriptor. See [PubImage](#pubimage) below.
+</ResponseField>
+
+<ResponseField name="Languages" type="Dictionary<string, LanguageDetail>" required>
+  Map of language code → `LanguageDetail`. Keys are ISO language codes (e.g. `"E"`, `"S"`).
+</ResponseField>
+
+<ResponseField name="Files" type="Dictionary<string, FileDetail>" required>
+  Map of language code → `FileDetail`. Each `FileDetail` contains the MP4 and 3GP video lists for that language. `WebScraper.DownloadAllFiles` always uses `Files.Values.FirstOrDefault()` to pick the first language's file list.
+</ResponseField>
+
+---
+
+## FileDetail
+
+`FileDetail` groups the available video files for one language. The two JSON property names (`"MP4"` and `"3GP"`) differ from the C# identifiers and are mapped with `[JsonPropertyName]`.
+
+```csharp
+public class FileDetail
+{
+    [JsonPropertyName("MP4")] public List<MovieDetail> MovieMp4S { get; set; } = [];
+    [JsonPropertyName("3GP")] public List<MovieDetail> Movie3Gps { get; set; } = [];
+}
+```
+
+<ResponseField name="MovieMp4S" type="List<MovieDetail>">
+  All available MP4 video files for this language. Each entry represents a distinct resolution. JSON field name: `"MP4"`. Defaults to an empty list.
+</ResponseField>
+
+<ResponseField name="Movie3Gps" type="List<MovieDetail>">
+  All available 3GP video files for this language. Each entry represents a distinct resolution. JSON field name: `"3GP"`. Defaults to an empty list.
+</ResponseField>
+
+<Note>
+  `WebScraper.DownloadAllFiles` only reads `MovieMp4S`. The `Movie3Gps` list is available in the model but not used by the current download pipeline.
+</Note>
+
+---
+
+## MovieDetail
+
+`MovieDetail` holds the complete metadata for a single video asset at a specific resolution. It is the primary source of information used by `WebScraper.DownloadAllFiles` to determine file URLs, sizes, and names.
+
+```csharp
+public class MovieDetail
+{
+    public required string Title { get; set; }
+    public required File File { get; set; }
+    public int FileSize { get; set; }
+    public required PubImage TrackImage { get; set; }
+    public required object Markers { get; set; }
+    public required string Label { get; set; }
+    public int Track { get; set; }
+    public bool HasTrack { get; set; }
+    public required string Pub { get; set; }
+    public int Docid { get; set; }
+    public int BookNum { get; set; }
+    public required string MimeType { get; set; }
+    public required string Edition { get; set; }
+    [JsonPropertyName("editionDescr")] public required string EditionDesc { get; set; }
+    public required string Format { get; set; }
+    [JsonPropertyName("formatDescr")] public required string FormatDesc { get; set; }
+    public required string Specialty { get; set; }
+    [JsonPropertyName("specialtyDescr")] public required string SpecialtyDesc { get; set; }
+    public bool Subtitled { get; set; }
+    public int FrameWidth { get; set; }
+    public int FrameHeight { get; set; }
+    public double FrameRate { get; set; }
+    public double Duration { get; set; }
+    public double BitRate { get; set; }
+    public PubImage? Subtitles { get; set; }
+}
+```
+
+<ResponseField name="Title" type="string" required>
+  Human-readable video title. Used as the file name when `DownloadFileNameType.Simple` is chosen.
+</ResponseField>
+
+<ResponseField name="File" type="File" required>
+  Download and streaming URL descriptor. See [File](#file) below. `File.Url` is used as the download URL.
+</ResponseField>
+
+<ResponseField name="FileSize" type="int">
+  File size in bytes. Used by `CacheService.Download` to verify whether a cached file is complete.
+</ResponseField>
+
+<ResponseField name="TrackImage" type="PubImage" required>
+  Thumbnail image for the track. See [PubImage](#pubimage).
+</ResponseField>
+
+<ResponseField name="Markers" type="object" required>
+  Raw chapter/marker data. Typed as `object` because its shape varies across publications.
+</ResponseField>
+
+<ResponseField name="Label" type="string" required>
+  Resolution label (e.g. `"720p"`, `"480p"`, `"360p"`, `"240p"`). Used by `WebScraper.DownloadAllFiles` to filter the list to the user-selected resolution.
+</ResponseField>
+
+<ResponseField name="Track" type="int">
+  Track number within the publication.
+</ResponseField>
+
+<ResponseField name="HasTrack" type="bool">
+  Whether this item has a track number.
+</ResponseField>
+
+<ResponseField name="Pub" type="string" required>
+  Short publication code, matching `JsonResponse.Pub`.
+</ResponseField>
+
+<ResponseField name="Docid" type="int">
+  Internal JW.ORG document identifier.
+</ResponseField>
+
+<ResponseField name="BookNum" type="int">
+  Book number as an integer, matching `JsonResponse.BookNum`.
+</ResponseField>
+
+<ResponseField name="MimeType" type="string" required>
+  MIME type of the file (e.g. `"video/mp4"`).
+</ResponseField>
+
+<ResponseField name="Edition" type="string" required>
+  Edition code.
+</ResponseField>
+
+<ResponseField name="EditionDesc" type="string" required>
+  Human-readable edition description. JSON field name: `"editionDescr"`.
+</ResponseField>
+
+<ResponseField name="Format" type="string" required>
+  Format code (e.g. `"MP4"`).
+</ResponseField>
+
+<ResponseField name="FormatDesc" type="string" required>
+  Human-readable format description. JSON field name: `"formatDescr"`.
+</ResponseField>
+
+<ResponseField name="Specialty" type="string" required>
+  Specialty category code, matching `JsonResponse.Specialty`.
+</ResponseField>
+
+<ResponseField name="SpecialtyDesc" type="string" required>
+  Human-readable specialty description. JSON field name: `"specialtyDescr"`.
+</ResponseField>
+
+<ResponseField name="Subtitled" type="bool">
+  Whether the video includes burned-in subtitles.
+</ResponseField>
+
+<ResponseField name="FrameWidth" type="int">
+  Video frame width in pixels.
+</ResponseField>
+
+<ResponseField name="FrameHeight" type="int">
+  Video frame height in pixels.
+</ResponseField>
+
+<ResponseField name="FrameRate" type="double">
+  Frames per second.
+</ResponseField>
+
+<ResponseField name="Duration" type="double">
+  Video duration in seconds.
+</ResponseField>
+
+<ResponseField name="BitRate" type="double">
+  Encoding bitrate in bits per second.
+</ResponseField>
+
+<ResponseField name="Subtitles" type="PubImage?">
+  Optional subtitle file descriptor. `null` when no subtitles are available. Uses `PubImage` to provide the URL and checksum of the subtitle asset.
+</ResponseField>
+
+---
+
+## PubImage
+
+`PubImage` is the base class for all asset descriptors (images, subtitle files). It provides the three fields common to every JW.ORG hosted asset.
+
+```csharp
+public class PubImage
+{
+    public required string Url { get; set; }
+    public required string ModifiedDatetime { get; set; }
+    public required object Checksum { get; set; }
+}
+```
+
+<ResponseField name="Url" type="string" required>
+  Absolute URL to the asset (image or subtitle file).
+</ResponseField>
+
+<ResponseField name="ModifiedDatetime" type="string" required>
+  Last-modified datetime string for the asset, as returned by the API.
+</ResponseField>
+
+<ResponseField name="Checksum" type="object" required>
+  Checksum value for the asset. Typed as `object` because the API returns different types (string or null) depending on the asset.
+</ResponseField>
+
+---
+
+## File
+
+`File` extends `PubImage` with a streaming URL, and is used specifically for the downloadable video file descriptor inside `MovieDetail`.
+
+```csharp
+public class File : PubImage
+{
+    public required string Stream { get; set; }
+}
+```
+
+<ResponseField name="Url" type="string" required>
+  Inherited from `PubImage`. The direct download URL. This is the value used by `CacheService.Download` when streaming a video to disk.
+</ResponseField>
+
+<ResponseField name="ModifiedDatetime" type="string" required>
+  Inherited from `PubImage`. Last-modified datetime string.
+</ResponseField>
+
+<ResponseField name="Checksum" type="object" required>
+  Inherited from `PubImage`. Checksum of the video file.
+</ResponseField>
+
+<ResponseField name="Stream" type="string" required>
+  A separate streaming URL for the video, distinct from the direct download `Url`.
+</ResponseField>
+
+---
+
+## LanguageDetail
+
+`LanguageDetail` describes a single language entry in the `JsonResponse.Languages` dictionary. It is not used directly in the download pipeline but is available for filtering or display purposes.
+
+```csharp
+public class LanguageDetail
+{
+    public required string Name { get; set; }
+    public required string Direction { get; set; }
+    public required string Locale { get; set; }
+    public required string Script { get; set; }
+}
+```
+
+<ResponseField name="Name" type="string" required>
+  Full display name of the language (e.g. `"English"`, `"Spanish"`).
+</ResponseField>
+
+<ResponseField name="Direction" type="string" required>
+  Text direction for the language. Typically `"ltr"` (left-to-right) or `"rtl"` (right-to-left).
+</ResponseField>
+
+<ResponseField name="Locale" type="string" required>
+  Locale code string (e.g. `"en"`, `"es"`).
+</ResponseField>
+
+<ResponseField name="Script" type="string" required>
+  Script name for the language's writing system (e.g. `"LATIN"`, `"ARABIC"`).
+</ResponseField>
+
+---
+
+## DTO relationship diagram
+
+The following diagram shows how the six DTOs nest inside each other as deserialized from the API.
+
+```
+JsonResponse
+├── PubImage                         (cover image)
+├── Languages: Dictionary<string, LanguageDetail>
+└── Files: Dictionary<string, FileDetail>
+    └── FileDetail
+        ├── MovieMp4S: List<MovieDetail>
+        │   ├── File : PubImage      (video download + stream URL)
+        │   ├── TrackImage: PubImage (thumbnail)
+        │   └── Subtitles: PubImage? (subtitle file, optional)
+        └── Movie3Gps: List<MovieDetail>
+            └── (same structure as MovieMp4S)
+```

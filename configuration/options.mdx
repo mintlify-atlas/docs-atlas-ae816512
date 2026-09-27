@@ -1,0 +1,235 @@
+---
+title: "Runtime Options — Resolution, Naming, and Download Path"
+sidebarTitle: "Options"
+description: "A complete reference for every interactive prompt the CLI presents at startup: language, section, resolution, target directory, file name style, and path grouping."
+---
+
+After `config.json` is validated, the CLI presents a sequence of interactive prompts that control exactly what gets downloaded and where it ends up. None of these require command-line flags — the tool walks you through each choice in order. This page documents every prompt, the values it accepts, and the effect each choice has on the resulting files.
+
+## Prompt Sequence
+
+<Steps>
+
+### Select Language
+
+The first prompt reads all top-level keys from `config.json` and asks you to choose one:
+
+```
+Select The Language:
+  > English
+    Spanish
+    French
+```
+
+The selected language name is used to look up the corresponding section map in `config.json`. Only sections belonging to that language are scraped in the next phase.
+
+### Select Section
+
+Once the HTML and JSON for every section in the chosen language has been scraped, the tool presents the section selection prompt. The available options are always `"All"` followed by the section names from `config.json`, sorted alphabetically:
+
+```
+Select the Section To be Downloaded:
+  > All
+    Season 1
+    Season 2
+    Season 3
+```
+
+<Note>
+  Choosing **All** causes every section in the selected language to be downloaded in a single run. Choosing a named section restricts the download to that section only.
+</Note>
+
+### Select Resolution
+
+The scraper inspects all fetched `JsonResponse` objects and aggregates the available `MovieDetail.Label` values (the resolution labels embedded in JW.ORG's JSON API) together with the cumulative `MovieDetail.FileSize` for each label. `Helper.GenerateMetadata()` builds this map, and `Helper.FormatFileSize()` converts raw byte totals into a human-readable string.
+
+The prompt lists each resolution alongside its estimated total download size:
+
+```
+Select The Resolution:
+  > 3gp: 148.32 MB
+    240p: 1.04 GB
+    360p: 2.17 GB
+    480p: 4.38 GB
+    720p: 9.61 GB
+```
+
+Common resolution labels returned by JW.ORG are:
+
+| Label | Typical use |
+|-------|-------------|
+| `3gp`  | Very low-bandwidth / older mobile devices |
+| `240p` | Low resolution (240 × 180) |
+| `360p` | Standard definition (360 × 270) |
+| `480p` | Enhanced standard definition (480 × 360) |
+| `720p` | High definition (1280 × 720) |
+
+<Note>
+  The labels and their availability depend entirely on what JW.ORG exposes for the chosen language and season. Not every resolution is guaranteed to be present for every section.
+</Note>
+
+### Target Directory
+
+A free-text prompt accepts an absolute or relative file system path. Leaving it empty is allowed:
+
+```
+What is the directory to store the files(empty is the current directory)?
+```
+
+The path is resolved as follows:
+
+```csharp
+string targetDirPrompt =
+    logger.Prompt("What is the directory to store the files(empty is the current directory)?", true);
+return Directory.Exists(targetDirPrompt)
+    ? targetDirPrompt
+    : Path.Combine(Directory.GetCurrentDirectory(), downloadDir);  // downloadDir = "files"
+```
+
+| Input | Resolved destination |
+|-------|----------------------|
+| A path that **exists** on disk | That path is used as-is |
+| An empty string | `./files/` relative to the current working directory |
+| A path that **does not exist** | `./files/` relative to the current working directory |
+
+<Tip>
+  Create your target directory before running the tool if you want files saved somewhere specific. If the path does not exist when the prompt is answered, the tool silently falls back to `./files/`.
+</Tip>
+
+### File Name Type
+
+Controls how each downloaded video file is named on disk.
+
+```
+Select The File Name Type:
+  > JW Library Style (Difficult to Read File Name)
+    Simple (Easy to Read File Name)
+```
+
+<ParamField path="DownloadFileNameType.JwLibrary" type="enum">
+  Uses the original filename extracted from the JW.ORG download URL path — the same filename that JW Library itself uses when it syncs a publication. Example:
+
+  ```
+  jwb-080_E_eljj_01_r240P.mp4
+  jwb-080_E_eljj_02_r240P.mp4
+  ```
+
+  Because these names encode the publication code, language, track number, and resolution, the JW Library app can recognise and index them correctly when they are placed in its import folder.
+</ParamField>
+
+<ParamField path="DownloadFileNameType.Simple" type="enum">
+  Uses `MovieDetail.Title` from the JSON API response, appended with the original file extension. Example:
+
+  ```
+  Lesson 1 - Welcome.mp4
+  Lesson 2 - The Family.mp4
+  ```
+
+  These names are far easier to read in a file manager or media player but are **not** recognised by JW Library's import mechanism.
+</ParamField>
+
+### File Path Type
+
+Controls whether videos are placed in a flat directory or organised into subdirectories per section.
+
+```
+Select The File Path Type:
+  > JW Library Style (Videos divided by Section [config])
+    Simple (All Videos in one Directory)
+```
+
+<ParamField path="DownloadFilePathType.Grouped" type="enum">
+  Each section's videos are placed inside a subdirectory named after the section key from `config.json`. Given a target directory of `./files/` and sections `Season 1` and `Season 2`, the layout becomes:
+
+  ```
+  files/
+  ├── Season 1/
+  │   ├── jwb-080_E_eljj_01_r240P.mp4
+  │   └── jwb-080_E_eljj_02_r240P.mp4
+  └── Season 2/
+      ├── jwb-080_E_eljj_17_r240P.mp4
+      └── jwb-080_E_eljj_18_r240P.mp4
+  ```
+</ParamField>
+
+<ParamField path="DownloadFilePathType.Simple" type="enum">
+  All videos, regardless of section, are written directly into the target directory:
+
+  ```
+  files/
+  ├── jwb-080_E_eljj_01_r240P.mp4
+  ├── jwb-080_E_eljj_02_r240P.mp4
+  ├── jwb-080_E_eljj_17_r240P.mp4
+  └── jwb-080_E_eljj_18_r240P.mp4
+  ```
+</ParamField>
+
+</Steps>
+
+## JW Library Compatibility
+
+<Note>
+  **For JW Library app imports**, use **JwLibrary** file name type combined with **Grouped** file path type. JW Library expects publication files to carry the original JW.ORG filenames (encoding the `pub` code, language symbol, track number, and resolution suffix) and to be organised into per-publication subdirectories. The `Grouped` mode creates exactly that subdirectory structure using the section keys defined in your `config.json`, and the `JwLibrary` name mode preserves the original filenames that the app uses to identify each video track. Using `Simple` names or a flat `Simple` path will result in the videos not being recognised during a JW Library import scan.
+</Note>
+
+## Option Combinations at a Glance
+
+<Tabs>
+  <Tab title="JW Library Import">
+
+    Choose these options when you want to import videos into the JW Library app:
+
+    | Prompt | Choice |
+    |--------|--------|
+    | File Name Type | `JW Library Style (Difficult to Read File Name)` |
+    | File Path Type | `JW Library Style (Videos divided by Section [config])` |
+
+    **Result:**
+    ```
+    files/
+    └── Season 1/
+        ├── jwb-080_E_eljj_01_r240P.mp4
+        └── jwb-080_E_eljj_02_r240P.mp4
+    ```
+
+  </Tab>
+  <Tab title="Personal Media Player">
+
+    Choose these options when you want easy-to-browse files for a media player or personal archive:
+
+    | Prompt | Choice |
+    |--------|--------|
+    | File Name Type | `Simple (Easy to Read File Name)` |
+    | File Path Type | `Simple (All Videos in one Directory)` |
+
+    **Result:**
+    ```
+    files/
+    ├── Lesson 1 - Welcome.mp4
+    ├── Lesson 2 - The Family.mp4
+    └── Lesson 3 - A New Friend.mp4
+    ```
+
+  </Tab>
+  <Tab title="Organised Archive">
+
+    Choose these options for a readable, section-organised archive without JW Library constraints:
+
+    | Prompt | Choice |
+    |--------|--------|
+    | File Name Type | `Simple (Easy to Read File Name)` |
+    | File Path Type | `JW Library Style (Videos divided by Section [config])` |
+
+    **Result:**
+    ```
+    files/
+    ├── Season 1/
+    │   ├── Lesson 1 - Welcome.mp4
+    │   └── Lesson 2 - The Family.mp4
+    └── Season 2/
+        ├── Lesson 17 - Kindness.mp4
+        └── Lesson 18 - Honesty.mp4
+    ```
+
+  </Tab>
+</Tabs>

@@ -1,0 +1,156 @@
+---
+title: "File naming conventions and folder organization modes"
+sidebarTitle: "File Organization"
+description: "Understand the two file naming modes and two directory layout modes, how to combine them, and which combination fits your use case best."
+---
+
+The JW Enjoy Life Scraper gives you two independent choices that together control how downloaded videos are named and where they land on disk. Because the choices are independent, you get four possible combinations — each suited to a different workflow. This page explains what each mode does under the hood, shows the resulting directory tree for every combination, and recommends the right pairing for common use cases.
+
+## File Naming Modes
+
+The naming mode is selected at the **"Select The File Name Type:"** prompt and maps to the `IWebScraper.DownloadFileNameType` enum.
+
+<Tabs>
+  <Tab title="JwLibrary">
+    ```csharp
+    string fileName = Path.GetFileName(new Uri(video.File.Url).AbsolutePath);
+    // e.g. "jwb-080_E_eljj_01_r240P.mp4"
+    ```
+
+    The filename is taken directly from the server-side URL path. The scraper calls `new Uri(video.File.Url)` to parse the download URL, then `Path.GetFileName(uri.AbsolutePath)` to extract the last path segment.
+
+    **Result:** filenames match JW.ORG's internal naming convention, for example:
+
+    ```text
+    jwb-080_E_eljj_01_r240P.mp4
+    jwb-080_E_eljj_02_r240P.mp4
+    jwb-080_E_eljj_03_r240P.mp4
+    ```
+
+    This format is required when importing videos into the **JW Library** app, which recognises publications by their server-side filename pattern.
+  </Tab>
+  <Tab title="Simple">
+    ```csharp
+    string fileName = video.Title + Path.GetExtension(new Uri(video.File.Url).AbsolutePath);
+    // e.g. "Let Us Learn to Worship Jehovah.mp4"
+    ```
+
+    The filename is built from `MovieDetail.Title` (the human-readable video title from the API metadata) combined with the file extension extracted from the URL.
+
+    **Result:** filenames are immediately legible without any lookup table, for example:
+
+    ```text
+    Let Us Learn to Worship Jehovah.mp4
+    Seek Jehovah While He May Be Found.mp4
+    Draw Close to Jehovah in Prayer.mp4
+    ```
+
+    This mode is ideal for personal archives and for sharing files with people who are not using the JW Library app.
+  </Tab>
+</Tabs>
+
+## File Path Modes
+
+The path mode is selected at the **"Select The File Path Type:"** prompt and maps to the `IWebScraper.DownloadFilePathType` enum.
+
+<Tabs>
+  <Tab title="Simple (flat)">
+    ```csharp
+    string dir = targetDir;
+    // all videos → /target/
+    ```
+
+    Every video, regardless of which config section it belongs to, is placed directly inside the target directory. No sub-directories are created.
+  </Tab>
+  <Tab title="Grouped (by section)">
+    ```csharp
+    string dir = Path.Combine(targetDir, item.Key);
+    // "Unit 1" videos → /target/Unit 1/
+    // "Unit 2" videos → /target/Unit 2/
+    ```
+
+    A sub-directory is created under the target directory for each config section key. `item.Key` is the section name as it appears in `config.json` (e.g. `"Unit 1"`, `"Unit 2"`). The directory is created on demand by `CacheService.Download()` before the first file in that section is written.
+  </Tab>
+</Tabs>
+
+## Directory Trees for All Four Combinations
+
+The examples below assume your target directory is `files/` and you are downloading three videos from two sections: **Unit 1** (two videos) and **Unit 2** (one video).
+
+<Accordion title="JwLibrary naming + Simple (flat) path">
+
+All server-named files land in one flat directory:
+
+```text
+files/
+├── jwb-080_E_eljj_01_r240P.mp4
+├── jwb-080_E_eljj_02_r240P.mp4
+└── jwb-080_E_eljj_03_r240P.mp4
+```
+
+</Accordion>
+
+<Accordion title="JwLibrary naming + Grouped (by section) path">
+
+Server-named files are separated into section sub-directories — the structure expected by JW Library's bulk import:
+
+```text
+files/
+├── Unit 1/
+│   ├── jwb-080_E_eljj_01_r240P.mp4
+│   └── jwb-080_E_eljj_02_r240P.mp4
+└── Unit 2/
+    └── jwb-080_E_eljj_03_r240P.mp4
+```
+
+</Accordion>
+
+<Accordion title="Simple naming + Simple (flat) path">
+
+Human-readable titles all in one place — easy to browse, easy to search:
+
+```text
+files/
+├── Let Us Learn to Worship Jehovah.mp4
+├── Seek Jehovah While He May Be Found.mp4
+└── Draw Close to Jehovah in Prayer.mp4
+```
+
+</Accordion>
+
+<Accordion title="Simple naming + Grouped (by section) path">
+
+Human-readable titles organised into section sub-directories — the most browseable layout for a personal archive:
+
+```text
+files/
+├── Unit 1/
+│   ├── Let Us Learn to Worship Jehovah.mp4
+│   └── Seek Jehovah While He May Be Found.mp4
+└── Unit 2/
+    └── Draw Close to Jehovah in Prayer.mp4
+```
+
+</Accordion>
+
+## Recommendation by Use Case
+
+| Use case | File naming | File path | Why |
+|---|---|---|---|
+| Import into JW Library app | JwLibrary | Grouped | JW Library identifies publications by server-side filename; grouping by section mirrors the expected folder structure |
+| Personal offline archive | Simple | Grouped | Human-readable titles in per-section folders make browsing and searching natural |
+| Sharing a flat folder | Simple | Simple | A single directory of legibly named files is easy to copy, zip, or share without confusion |
+| Re-importing after re-download | JwLibrary | Simple | Flat structure avoids duplicate section folders when merging into an existing library |
+
+<Note>
+  Regardless of which naming mode you choose, every filename passes through `Helper.SanitizeFileName()` before the path is constructed. This method replaces every character returned by `Path.GetInvalidFileNameChars()` with an underscore (`_`), ensuring the resulting path is valid on Windows, macOS, and Linux.
+
+  ```csharp
+  public static string SanitizeFileName(string name)
+  {
+      return Path.GetInvalidFileNameChars().Aggregate(name, (current, c) => current.Replace(c, '_'));
+  }
+  ```
+
+  For example, a title like `"Seek Jehovah: A Daily Practice"` becomes `"Seek Jehovah_ A Daily Practice.mp4"` on systems where `:` is an invalid filename character.
+</Note>

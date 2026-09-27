@@ -1,0 +1,84 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "JW Enjoy Life Scraper",
+  "projectDescription": "A .NET CLI tool that scrapes JW.ORG to discover and bulk-download Enjoy Life video publications in multiple languages and resolutions.",
+  "theme": "palm",
+  "primaryColor": "#2563EB",
+  "lightColor": "#DBEAFE",
+  "darkColor": "#1E3A8A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/config-file",
+              "configuration/options"
+            ]
+          },
+          {
+            "group": "Usage Guide",
+            "pages": [
+              "guides/workflow",
+              "guides/downloading",
+              "guides/file-organization"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/architecture",
+              "reference/interfaces",
+              "reference/data-models",
+              "reference/caching"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Interactive CLI prompts powered by Spectre.Console for language, section, resolution, and output directory selection",
+    "Multi-language support via a configurable config.json file mapping languages to JW.ORG section URLs",
+    "Parallel scraping with configurable concurrency (up to 8 threads) for fast HTML and JSON extraction",
+    "Two video file naming modes: JW Library-compatible names or simple human-readable titles",
+    "Two file organization modes: flat directory or section-grouped subdirectories",
+    "Disk-based caching of scraped HTML, JSON responses, and downloaded videos to avoid redundant network requests",
+    "Multiple resolution support (3GP, 240p, 360p, 480p, 720p) with estimated total download size shown before selection",
+    "Single-file executable publishing via .NET 9 PublishSingleFile for easy distribution"
+  ],
+  "publicApiSurface": [
+    "IWebScraper.ScrapeJsonUrlsFromSections(sectionUrls, callback)",
+    "IWebScraper.ScrapeJsonResponseFromUrls(sectionUrls, callback)",
+    "IWebScraper.DownloadAllFiles(sectionUrls, resolution, targetDir, fileNameType, filePathType, callback)",
+    "IWebScraper.DownloadFileNameType enum: JwLibrary | Simple",
+    "IWebScraper.DownloadFilePathType enum: Simple | Grouped",
+    "ICacheService.Set<T>(key, value, token)",
+    "ICacheService.Get<T>(key, token)",
+    "ICacheService.GetText(url, token)",
+    "ICacheService.GetJson<T>(url, token)",
+    "ICacheService.Download(dir, url, filename, fileSize, token)",
+    "IHttpClient.GetString(url, cancellationToken)",
+    "IHttpClient.GetJson<T>(url, cancellationToken)",
+    "IHttpClient.DownloadStream(url, cancellationToken)",
+    "IFileService.WriteAllText / ReadAllText / Exists / Create / GetFileData / CreateDirectory",
+    "ILogger.Log(level, message, options)",
+    "ILogger.Prompt(message, list) / Prompt(message, allowEmpty) / Prompt<T>(message)",
+    "ILogger.WithProgress<T>(title, operation)",
+    "ConfigurationService.GetConfig(configFile, token)",
+    "Helper.GenerateHash(input)",
+    "Helper.FormatFileSize(bytes)",
+    "Helper.GenerateMetadata(responses)",
+    "Helper.SanitizeFileName(name)"
+  ]
+}

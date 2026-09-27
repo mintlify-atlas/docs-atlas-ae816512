@@ -1,0 +1,497 @@
+---
+title: "Public interfaces — IWebScraper, ICacheService, and more"
+sidebarTitle: "Interfaces"
+description: "Full method signatures and behavior docs for all five interfaces in the Lib project: IWebScraper, ICacheService, IHttpClient, IFileService, and ILogger."
+---
+
+The `Lib` project exposes five interfaces that completely decouple the concrete service implementations from each other and from the `Console` layer. Every service is injected through its interface, making it straightforward to substitute alternative implementations — for instance, an in-memory cache or a mock HTTP client — without modifying any consuming code.
+
+---
+
+## IWebScraper
+
+`IWebScraper` is the top-level scraping contract. It is defined at the bottom of `Lib/Services/WebScraper.cs` and implemented by `WebScraper`. The interface also declares two enums that control how downloaded files are named and organized on disk.
+
+```csharp
+public interface IWebScraper
+{
+    public enum DownloadFileNameType
+    {
+        JwLibrary,
+        Simple
+    }
+
+    public enum DownloadFilePathType
+    {
+        Simple,
+        Grouped
+    }
+
+    public Task<Dictionary<string, List<string>>> ScrapeJsonUrlsFromSections(
+        Dictionary<string, string> sectionUrls, Action<decimal>? callback = null);
+
+    public Task<Dictionary<string, List<JsonResponse>>> ScrapeJsonResponseFromUrls(
+        Dictionary<string, List<string>> sectionUrls, Action<decimal>? callback = null);
+
+    public Task DownloadAllFiles(
+        Dictionary<string, List<JsonResponse>> sectionUrls,
+        string resolution,
+        string targetDir,
+        DownloadFileNameType fileNameType,
+        DownloadFilePathType filePathType,
+        Action<decimal>? callback = null);
+}
+```
+
+### Enums
+
+<Accordion title="DownloadFileNameType">
+Controls how the file name is derived when saving a downloaded video.
+
+| Value | Behavior |
+|---|---|
+| `JwLibrary` | Uses the original file name extracted from the URL path (`Path.GetFileName`). Matches the naming convention used by the JW Library app — difficult to read at a glance. |
+| `Simple` | Uses `MovieDetail.Title` plus the file extension from the URL. Human-readable. |
+</Accordion>
+
+<Accordion title="DownloadFilePathType">
+Controls whether downloaded videos are placed in a flat directory or grouped by section.
+
+| Value | Behavior |
+|---|---|
+| `Simple` | All videos are written directly into `targetDir`. |
+| `Grouped` | A sub-directory named after each section key is created inside `targetDir`, and that section's videos are written there (`Path.Combine(targetDir, sectionKey)`). |
+</Accordion>
+
+### Methods
+
+#### `ScrapeJsonUrlsFromSections`
+
+Fetches the HTML page for each section URL in parallel, parses each page with HtmlAgilityPack, and returns the list of JW.ORG JSON API URLs discovered in that page.
+
+<ParamField path="sectionUrls" type="Dictionary<string, string>" required>
+  A map of section name → section page URL. Each value is fetched through `ICacheService.GetText()`.
+</ParamField>
+
+<ParamField path="callback" type="Action<decimal>?">
+  Optional progress callback. Invoked after each section completes with a value in the range `[0, 100]`.
+</ParamField>
+
+**Returns** `Task<Dictionary<string, List<string>>>` — a map of section name → list of JSON API URLs found in that section's HTML.
+
+#### `ScrapeJsonResponseFromUrls`
+
+Fetches and deserializes the JW.ORG JSON API response for every URL discovered in the previous step. Sections are processed sequentially; URLs within each section are fetched in parallel.
+
+<ParamField path="sectionUrls" type="Dictionary<string, List<string>>" required>
+  Output of `ScrapeJsonUrlsFromSections`. Maps section name → list of JSON API URLs.
+</ParamField>
+
+<ParamField path="callback" type="Action<decimal>?">
+  Optional progress callback. Tracks progress across the total count of all URLs in all sections.
+</ParamField>
+
+**Returns** `Task<Dictionary<string, List<JsonResponse>>>` — a map of section name → list of deserialized `JsonResponse` objects.
+
+#### `DownloadAllFiles`
+
+Iterates the `JsonResponse` list for each section and downloads each matching MP4 video file. File existence and size are checked by `ICacheService.Download` before any network request is made.
+
+<ParamField path="sectionUrls" type="Dictionary<string, List<JsonResponse>>" required>
+  Output of `ScrapeJsonResponseFromUrls`. Maps section name → list of deserialized API responses.
+</ParamField>
+
+<ParamField path="resolution" type="string" required>
+  The `MovieDetail.Label` value to match (e.g. `"720p"`, `"480p"`, `"360p"`, `"240p"`). Only the first `FileDetail` value (language) per `JsonResponse` is considered.
+</ParamField>
+
+<ParamField path="targetDir" type="string" required>
+  Root output directory. The `files/` subdirectory of the working directory is used as the default in `Program.cs`.
+</ParamField>
+
+<ParamField path="fileNameType" type="IWebScraper.DownloadFileNameType" required>
+  Controls whether the saved file uses the JW Library URL-based name or a human-readable title.
+</ParamField>
+
+<ParamField path="filePathType" type="IWebScraper.DownloadFilePathType" required>
+  Controls whether files are placed flat in `targetDir` or into per-section sub-directories.
+</ParamField>
+
+<ParamField path="callback" type="Action<decimal>?">
+  Optional progress callback, reported across the total download count.
+</ParamField>
+
+**Returns** `Task` — completes when all downloads have been attempted.
+
+---
+
+## ICacheService
+
+`ICacheService` is the caching contract for all network resources and computed values. `CacheService` stores everything on disk under a `.cache/` directory.
+
+```csharp
+public interface ICacheService
+{
+    public Task Set<T>(string key, T value, CancellationToken token = default);
+
+    public Task<T?> Get<T>(string key, CancellationToken token = default)
+        where T : class;
+
+    public Task<string?> GetText(string url, CancellationToken token = default);
+
+    public Task<T?> GetJson<T>(string url, CancellationToken token = default)
+        where T : class;
+
+    public Task<bool> Download(
+        string dir,
+        string url,
+        string filename,
+        int fileSize,
+        CancellationToken token = default);
+}
+```
+
+### Methods
+
+#### `Set<T>`
+
+Persists a value under a hash of `key` as a JSON-serialized file. Skips the write if the file already exists.
+
+<ParamField path="key" type="string" required>
+  Arbitrary string key. Its SHA-256 hash becomes the cache file name (no extension).
+</ParamField>
+
+<ParamField path="value" type="T" required>
+  Value to serialize and cache. Serialized using `System.Text.Json`.
+</ParamField>
+
+<ParamField path="token" type="CancellationToken">
+  Cancellation token. Defaults to `default`.
+</ParamField>
+
+#### `Get<T>`
+
+Reads and deserializes a previously cached value. Returns `null` if the cache file does not exist.
+
+<ParamField path="key" type="string" required>
+  The same key passed to `Set<T>`.
+</ParamField>
+
+<ParamField path="token" type="CancellationToken">
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<T?>` where `T : class` — the deserialized value, or `null` on a cache miss.
+
+#### `GetText`
+
+Fetches an HTML or plain-text URL, caching the response as a `<hash>.txt` file.
+
+<ParamField path="url" type="string" required>
+  The page URL to fetch. Used both as the cache lookup key and as the request URL.
+</ParamField>
+
+<ParamField path="token" type="CancellationToken">
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<string?>` — the response body, or `null` if the HTTP request failed.
+
+#### `GetJson<T>`
+
+Fetches a JSON API URL and deserializes the response, caching the serialized JSON as a `<hash>.json` file.
+
+<ParamField path="url" type="string" required>
+  The JSON API URL to fetch.
+</ParamField>
+
+<ParamField path="token" type="CancellationToken">
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<T?>` where `T : class` — the deserialized object, or `null` if the request failed.
+
+#### `Download`
+
+Downloads a binary file (video) to `dir/SanitizeFileName(filename)`. Skips the download if the file already exists and its byte length matches `fileSize`.
+
+<ParamField path="dir" type="string" required>
+  Destination directory. Created automatically via `IFileService.CreateDirectory` if it does not exist.
+</ParamField>
+
+<ParamField path="url" type="string" required>
+  Full URL of the file to download.
+</ParamField>
+
+<ParamField path="filename" type="string" required>
+  Desired file name. Passed through `Helper.SanitizeFileName` before use.
+</ParamField>
+
+<ParamField path="fileSize" type="int" required>
+  Expected file size in bytes, sourced from `MovieDetail.FileSize`. Used to validate whether the cached file is complete.
+</ParamField>
+
+<ParamField path="token" type="CancellationToken">
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<bool>` — `true` if the file was already cached or successfully downloaded; `false` if the download stream was `null`.
+
+---
+
+## IHttpClient
+
+`IHttpClient` is the raw HTTP layer, implemented by `CustomHttpClient` using RestSharp. It is never called directly by `WebScraper` — only by `CacheService`.
+
+```csharp
+public interface IHttpClient
+{
+    Task<string?> GetString(string url, CancellationToken cancellationToken);
+    Task<T?> GetJson<T>(string url, CancellationToken cancellationToken);
+    Stream? DownloadStream(string url, CancellationToken cancellationToken);
+}
+```
+
+### Methods
+
+#### `GetString`
+
+Sends an HTTP GET request and returns the response body as a string.
+
+<ParamField path="url" type="string" required>
+  The URL to request.
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" required>
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<string?>` — the response content string, or `null` on failure.
+
+#### `GetJson<T>`
+
+Sends an HTTP GET request and deserializes the JSON response body.
+
+<ParamField path="url" type="string" required>
+  The URL to request.
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" required>
+  Cancellation token.
+</ParamField>
+
+**Returns** `Task<T?>` — the deserialized object, or `null` on failure.
+
+#### `DownloadStream`
+
+Opens a streaming HTTP GET request and returns the raw response stream for writing to disk.
+
+<ParamField path="url" type="string" required>
+  The file URL to stream.
+</ParamField>
+
+<ParamField path="cancellationToken" type="CancellationToken" required>
+  Cancellation token.
+</ParamField>
+
+**Returns** `Stream?` — the response body stream, or `null` on failure. The caller is responsible for disposing the stream.
+
+---
+
+## IFileService
+
+`IFileService` abstracts all `System.IO` file and directory operations. This makes file I/O testable and swappable. Implemented by `FileService`.
+
+```csharp
+public interface IFileService
+{
+    Task WriteAllText(string path, string contents, CancellationToken token);
+    Task<string> ReadAllText(string path, CancellationToken token);
+    bool Exists(string path);
+    FileStream Create(string path);
+    FileInfo GetFileData(string path);
+    DirectoryInfo CreateDirectory(string path);
+}
+```
+
+### Methods
+
+<Accordion title="WriteAllText">
+Asynchronously writes `contents` to the file at `path`, overwriting it if it exists.
+
+<ParamField path="path" type="string" required>Full file path to write.</ParamField>
+<ParamField path="contents" type="string" required>Text content to write.</ParamField>
+<ParamField path="token" type="CancellationToken" required>Cancellation token.</ParamField>
+
+**Returns** `Task`.
+</Accordion>
+
+<Accordion title="ReadAllText">
+Asynchronously reads the entire contents of the file at `path`.
+
+<ParamField path="path" type="string" required>Full file path to read.</ParamField>
+<ParamField path="token" type="CancellationToken" required>Cancellation token.</ParamField>
+
+**Returns** `Task<string>` — the file contents.
+</Accordion>
+
+<Accordion title="Exists">
+Returns `true` if the file exists at the given path. Wraps `File.Exists`.
+
+<ParamField path="path" type="string" required>Full file path to check.</ParamField>
+
+**Returns** `bool`.
+</Accordion>
+
+<Accordion title="Create">
+Creates or overwrites the file at `path` and returns an open `FileStream`. Wraps `File.Create`.
+
+<ParamField path="path" type="string" required>Full file path to create.</ParamField>
+
+**Returns** `FileStream` — an open, writable stream. The caller must dispose it.
+</Accordion>
+
+<Accordion title="GetFileData">
+Returns a `FileInfo` object for the file at `path`. The file does not need to exist — `FileInfo.Exists` can be checked on the result.
+
+<ParamField path="path" type="string" required>Full file path to inspect.</ParamField>
+
+**Returns** `FileInfo`.
+</Accordion>
+
+<Accordion title="CreateDirectory">
+Creates the directory (and any necessary parent directories) at `path`. Wraps `Directory.CreateDirectory`.
+
+<ParamField path="path" type="string" required>Directory path to create.</ParamField>
+
+**Returns** `DirectoryInfo` — the created or existing directory.
+</Accordion>
+
+---
+
+## ILogger
+
+`ILogger` is the terminal UI contract. `ConsoleLogger` implements it using Spectre.Console, providing colored output, Figlet banners, selection prompts, and animated progress bars. The interface also declares three nested enums.
+
+```csharp
+public interface ILogger
+{
+    enum Color { Red, Blue, Green }
+
+    public enum Level { Info, Error, Figlet }
+
+    public enum Options { Bold, Italics }
+
+    public void Log(Level level, string message, Options? options = null);
+
+    public Task<T> WithProgress<T>(string title,
+        Func<Action<decimal>, Task<T>> operation);
+
+    public T Prompt<T>(string message) where T : struct, Enum;
+
+    public string Prompt(string message, IEnumerable<string> list);
+
+    public string Prompt(string message, bool allowEmpty);
+}
+```
+
+### Enums
+
+<Accordion title="Color">
+Used internally by `ConsoleLogger.LogTextGenerator` to apply Spectre.Console markup colors.
+
+| Value | Markup color |
+|---|---|
+| `Red` | `[red ...]` — used for error messages |
+| `Blue` | `[blue ...]` — used for info messages and prompts |
+| `Green` | `[green ...]` — used for progress bar titles |
+</Accordion>
+
+<Accordion title="Level">
+Passed to `Log()` to determine rendering style.
+
+| Value | Behavior in `ConsoleLogger` |
+|---|---|
+| `Info` | `AnsiConsole.MarkupLine` with blue color |
+| `Error` | `AnsiConsole.MarkupLine` with red bold color; prefixes message with `"ERROR: "` |
+| `Figlet` | `AnsiConsole.Write(new FigletText(...))` in blue |
+</Accordion>
+
+<Accordion title="Options">
+Optional text-style modifier for `Log()`.
+
+| Value | Spectre markup modifier |
+|---|---|
+| `Bold` | Appends `bold` to the markup style string |
+| `Italics` | Appends `italic` to the markup style string |
+</Accordion>
+
+### Methods
+
+#### `Log`
+
+Writes a message to the terminal. Style is determined by the `Level` and optional `Options`.
+
+<ParamField path="level" type="ILogger.Level" required>
+  The display level: `Info`, `Error`, or `Figlet`.
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  The text to display. For `Figlet`, this becomes the large ASCII-art text.
+</ParamField>
+
+<ParamField path="options" type="ILogger.Options?">
+  Optional style modifier (`Bold` or `Italics`). Has no effect on `Figlet` level.
+</ParamField>
+
+#### `WithProgress<T>`
+
+Displays an animated Spectre.Console progress bar while executing an async operation. The caller drives progress by invoking the provided `Action<decimal>` with values in `[0, 100]`.
+
+<ParamField path="title" type="string" required>
+  Label displayed next to the progress bar.
+</ParamField>
+
+<ParamField path="operation" type="Func<Action<decimal>, Task<T>>" required>
+  An async delegate that receives a `Action<decimal>` progress reporter and returns a result when complete.
+</ParamField>
+
+**Returns** `Task<T>` — the value returned by `operation`.
+
+#### `Prompt<T>` (enum overload)
+
+Displays a `SelectionPrompt` populated with all names of enum `T`. Returns the selected value parsed back to `T`.
+
+<ParamField path="message" type="string" required>
+  The prompt title shown above the selection list.
+</ParamField>
+
+**Returns** `T` where `T : struct, Enum`.
+
+#### `Prompt` (list overload)
+
+Displays a `SelectionPrompt` populated from an arbitrary string list and returns the selected item.
+
+<ParamField path="message" type="string" required>
+  The prompt title.
+</ParamField>
+
+<ParamField path="list" type="IEnumerable<string>" required>
+  The choices to display.
+</ParamField>
+
+**Returns** `string` — the selected item.
+
+#### `Prompt` (free-text overload)
+
+Displays a free-text `TextPrompt`. Optionally permits an empty response.
+
+<ParamField path="message" type="string" required>
+  The prompt title.
+</ParamField>
+
+<ParamField path="allowEmpty" type="bool" required>
+  If `true`, the user may press Enter without typing anything.
+</ParamField>
+
+**Returns** `string` — the entered text (may be empty if `allowEmpty` is `true`).

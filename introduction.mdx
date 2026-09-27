@@ -1,0 +1,73 @@
+---
+title: "JW Enjoy Life Scraper: Bulk-Download Enjoy Life Videos"
+sidebarTitle: "Introduction"
+description: "A .NET 9 interactive CLI that scrapes JW.ORG to discover and bulk-download Enjoy Life video publications across multiple languages and resolutions."
+---
+
+JW Enjoy Life Scraper is a command-line tool built with C# and .NET 9 that automates the discovery and bulk downloading of *Enjoy Life* video publications from JW.ORG. Instead of manually navigating the website and downloading videos one by one, you point the tool at a `config.json` file containing your section URLs, answer a handful of interactive prompts, and let it handle the rest — scraping HTML pages, fetching JSON metadata, and streaming every video file to disk at the resolution and folder layout you choose.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Interactive CLI Prompts" icon="terminal">
+    Powered by **Spectre.Console**, the tool presents styled selection menus and progress bars directly in your terminal — no flags to memorize, no config gymnastics.
+  </Card>
+  <Card title="Multi-Language Support" icon="globe">
+    Define as many languages as you need in `config.json`. Each language maps to its own set of named sections with JW.ORG URLs, and you pick the language at runtime.
+  </Card>
+  <Card title="Parallel Scraping" icon="bolt">
+    HTML scraping, JSON fetching, and file downloads all run with up to **8 concurrent threads** via `Parallel.ForEachAsync`, dramatically reducing total download time.
+  </Card>
+  <Card title="Five Resolution Options" icon="film">
+    Choose from **3GP, 240p, 360p, 480p, or 720p**. Before you commit, the tool totals the estimated download size for every resolution so you can make an informed choice.
+  </Card>
+  <Card title="Two Naming Modes" icon="tag">
+    **JwLibrary** mode keeps the original JW.ORG filename (URL path). **Simple** mode renames each file to the video's human-readable title plus the original extension.
+  </Card>
+  <Card title="Two Path Modes" icon="folder-tree">
+    **Simple** mode places all videos in a single directory. **Grouped** mode mirrors your `config.json` section names as subfolders — matching the JW Library folder layout.
+  </Card>
+  <Card title="Disk-Based Caching" icon="database">
+    Every HTTP response (HTML pages and JSON payloads) is cached in a local `.cache/` directory as a SHA-256-keyed file. Re-runs skip already-fetched content entirely.
+  </Card>
+  <Card title="Single-File Executable" icon="box">
+    `PublishSingleFile=true` is set in `Console.csproj`. Publish once for your target platform and distribute a single self-contained binary — no .NET runtime required on the target machine.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The tool runs in three distinct stages each time you launch it.
+
+<Steps>
+  <Step title="Discover — Scrape HTML and JSON Metadata">
+    The tool reads your `config.json` to obtain the JW.ORG section URLs for the selected language. It fetches each section's HTML page and uses **HtmlAgilityPack** to extract `data-jsonurl` attributes from video container nodes. It then issues parallel requests to those JSON endpoints (the same API JW.ORG's media library uses) and deserializes the responses into structured `JsonResponse` objects containing per-resolution file details.
+  </Step>
+  <Step title="Configure — Choose Resolution and Output Options">
+    After discovery, the tool aggregates file sizes across all videos at each resolution and presents you with an annotated selection menu (e.g. `720p: 4.2 GB`). You then choose a target directory, a file naming mode (JwLibrary or Simple), and a path layout mode (Simple or Grouped). Every choice is made through a Spectre.Console selection prompt — no manual editing required.
+  </Step>
+  <Step title="Download — Stream Files to Disk">
+    With your preferences locked in, the tool downloads every selected video in parallel using **RestSharp** streams written directly to disk via `FileStream`. Files that already exist at the correct byte size are skipped automatically, making interrupted runs safely resumable.
+  </Step>
+</Steps>
+
+## Tech Stack
+
+| Component | Library / Version |
+|---|---|
+| Runtime | .NET 9 (`net9.0`) |
+| HTML parsing | HtmlAgilityPack 1.12.1 |
+| HTTP client | RestSharp 112.1.0 |
+| Terminal UI | Spectre.Console 0.50.0 |
+| Distribution | Single-file executable (`PublishSingleFile=true`) |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Clone the repo, build the binary, create your first `config.json`, and run your first download in minutes.
+  </Card>
+  <Card title="Installation" icon="wrench" href="/installation">
+    Detailed build-from-source and single-file publish instructions, with a full Runtime Identifier reference table.
+  </Card>
+</CardGroup>

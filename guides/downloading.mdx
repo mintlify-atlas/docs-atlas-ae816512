@@ -1,0 +1,154 @@
+---
+title: "Downloading videos: choosing resolution and managing size"
+sidebarTitle: "Downloading"
+description: "How the download stage works, how size estimates are computed, and how to choose the right resolution for your storage and quality needs."
+---
+
+Once you have confirmed your resolution and directory choices, the scraper enters its final stage: iterating every selected video, resolving the correct file from the JW media API response, and streaming it to disk. This page explains the exact mechanics of that process, how size estimates are produced before you commit to a download, and the reasoning behind each available resolution.
+
+## How the Download Stage Works
+
+`WebScraper.DownloadAllFiles()` is called with the filtered section map, your chosen resolution label, target directory, and the two naming/path mode flags. It loops over every `KeyValuePair<string, List<JsonResponse>>` in the section map and, for each `JsonResponse`, selects the matching `MovieDetail` from the API response structure.
+
+### Data model path
+
+The JW media API returns a nested object. The relevant traversal is:
+
+```text
+JsonResponse
+  └── Files : Dictionary<string, FileDetail>
+        └── FileDetail
+              ├── MovieMp4S : List<MovieDetail>   ← MP4 formats (240p, 360p, 480p, 720p)
+              └── Movie3Gps : List<MovieDetail>   ← 3GP format
+```
+
+`DownloadAllFiles` calls `x.Files.Values.FirstOrDefault()` to obtain the `FileDetail` for the response's primary language key, then calls `.MovieMp4S.FirstOrDefault(movie => movie.Label == resolution)` to find the `MovieDetail` whose `Label` property matches the resolution string you selected (e.g. `"240p"`, `"720p"`, or `"3gp"`).
+
+<Note>
+  3GP videos live in `Movie3Gps` on the `FileDetail` object, but the current download loop reads from `MovieMp4S` only. The `"3gp"` label therefore appears in size estimates when `GenerateMetadata` scans `MovieMp4S` entries — select it only if the API surface for your language includes 3GP entries in that list.
+</Note>
+
+### File writing via CacheService
+
+Each resolved `MovieDetail` is passed to `CacheService.Download(dir, url, fileName, fileSize, token)`:
+
+```csharp
+public async Task<bool> Download(string dir, string url, string filename, int fileSize,
+    CancellationToken token = default)
+{
+    string cacheFilePath = Path.Combine(dir, Helper.SanitizeFileName(filename));
+    FileInfo fileInfo = _fileService.GetFileData(cacheFilePath);
+    if (fileInfo.Exists && fileInfo.Length == fileSize) return true;
+
+    Stream? downloadStream = _client.DownloadStream(url, token);
+    if (downloadStream is null) return false;
+
+    _fileService.CreateDirectory(dir);
+    await using FileStream fileStream = _fileService.Create(cacheFilePath);
+    await downloadStream.CopyToAsync(fileStream, token);
+    return true;
+}
+```
+
+Key behaviours:
+
+- **Skip logic**: if `FileInfo.Exists && FileInfo.Length == fileSize` is `true`, the method returns `true` immediately without touching the network. This provides byte-exact resume support.
+- **Streaming**: the video is not buffered in memory — `HttpClient.DownloadStream()` returns a `Stream` that is piped directly into a `FileStream` via `CopyToAsync`.
+- **Directory creation**: `_fileService.CreateDirectory(dir)` is called just before the file is created, so the target folder (including section sub-directories in Grouped mode) is created on demand.
+- **Filename sanitisation**: `Helper.SanitizeFileName(filename)` is applied to every filename before the path is assembled, replacing any character returned by `Path.GetInvalidFileNameChars()` with `_`.
+
+### Error handling
+
+Each video download runs inside the `ParallelHelper` wrapper, which catches all exceptions per item:
+
+```csharp
+catch (Exception exception)
+{
+    errorAction?.Invoke(exception, item);
+}
+```
+
+The error action logs the section name, exception message, and failing URL at `ILogger.Level.Error`. The download queue continues uninterrupted — a single failed video does not stop the remaining files.
+
+## Resolution Comparison
+
+| Resolution | Container | Approx. size per video | Best for |
+|---|---|---|---|
+| `3gp` | 3GP | ~10–25 MB | Mobile devices, very low bandwidth |
+| `240p` | MP4 | ~20–50 MB | Low storage, offline verification runs |
+| `360p` | MP4 | ~50–100 MB | Balanced quality and size |
+| `480p` | MP4 | ~80–150 MB | Standard quality, most screens |
+| `720p` | MP4 | ~150–300 MB | High definition, large displays |
+
+<Warning>
+  720p downloads can consume several gigabytes for a full publication set. Always review the size estimate shown in the resolution prompt before confirming. If you are downloading to a device with limited free space, start with 360p or 480p instead.
+</Warning>
+
+## How Size Estimates Are Calculated
+
+Before the resolution prompt is shown, `Helper.GenerateMetadata()` scans every `JsonResponse` in the selected section(s) and accumulates `MovieDetail.FileSize` (an `int` representing bytes) per resolution label:
+
+```csharp
+public static Dictionary<string, decimal> GenerateMetadata(IEnumerable<JsonResponse> responses)
+{
+    Dictionary<string, decimal> resolutionSizes = new();
+
+    foreach (MovieDetail movieDetail in responses.SelectMany(response =>
+                 response.Files.FirstOrDefault().Value.MovieMp4S))
+    {
+        string resolution = movieDetail.Label;
+        resolutionSizes.TryAdd(resolution, 0);
+        resolutionSizes[resolution] += movieDetail.FileSize;
+    }
+
+    return resolutionSizes;
+}
+```
+
+The resulting byte totals are then formatted by `Helper.FormatFileSize()`, which divides repeatedly by 1024 and selects the appropriate unit suffix:
+
+```csharp
+public static string FormatFileSize(decimal bytes)
+{
+    List<string> sizes = ["B", "KB", "MB", "GB", "TB"];
+    int order = 0;
+    decimal size = bytes;
+
+    while (size >= 1024 && order < sizes.Count - 1)
+    {
+        order++;
+        size /= 1024;
+    }
+
+    return $"{size:0.##} {sizes[order]}";
+}
+```
+
+The formatted string (e.g. `2.34 GB`) is appended to the resolution label and shown in the prompt:
+
+```text
+Select The Resolution:
+> 3gp: 487.56 MB
+  240p: 1.43 GB
+  360p: 2.87 GB
+  480p: 4.21 GB
+  720p: 7.68 GB
+```
+
+<Note>
+  The estimate reflects the sum of `MovieDetail.FileSize` values as reported by the JW media API — it is the pre-download declared size, not a sampled average. Actual downloaded file sizes match this figure precisely, which is the same value used by the skip logic (`FileInfo.Length == fileSize`).
+</Note>
+
+## Download Progress Tracking
+
+Progress is tracked at the section level inside `DownloadAllFiles`. A shared counter (`doneTask`) is incremented atomically with `Interlocked.Increment` after each video completes (whether downloaded or skipped), and the percentage is reported to the `"Download Progress:"` bar:
+
+```csharp
+progressAction?.Invoke((decimal)doneTask / allTasks * 100);
+```
+
+The total task count (`allTasks`) covers all videos across all selected sections combined, so the bar reflects overall progress rather than per-section progress.
+
+<Tip>
+  Run your first download at **240p** to confirm that your `config.json` section URLs are correct and that the scraper can reach JW.ORG. The small file sizes make this a fast sanity check. Once everything looks good, re-run the tool and select a higher resolution — already-downloaded 240p files are stored in their own filenames and will not conflict with the new download.
+</Tip>

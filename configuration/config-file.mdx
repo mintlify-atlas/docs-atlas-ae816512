@@ -1,0 +1,140 @@
+---
+title: "config.json — Language and Section Configuration"
+sidebarTitle: "Config File"
+description: "Learn how to create and structure the config.json file that tells the scraper which JW.ORG pages to target, organized by language and section."
+---
+
+The `config.json` file is the single source of truth for the scraper. It maps every language and section name shown in the interactive prompts to the corresponding JW.ORG video library page URL that the tool will scrape. Without it the program cannot start, so it must be present in the **current working directory** from which you launch the executable.
+
+## File Format
+
+`config.json` is a plain JSON object structured as two nested levels:
+
+1. **Top-level keys** — language display names (e.g. `"English"`, `"Spanish"`). These are the exact strings presented to you during the _Select The Language_ prompt.
+2. **Second-level keys** — section names within that language (e.g. `"Season 1"`, `"Season 2"`). These are the strings presented during the _Select the Section To be Downloaded_ prompt.
+3. **Second-level values** — the full JW.ORG HTML page URL for that section's video grid. The scraper fetches this page, extracts the embedded JSON API links, and uses those to discover every downloadable video file.
+
+```json config.json
+{
+  "English": {
+    "Season 1": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S2",
+    "Season 3": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S3"
+  },
+  "Spanish": {
+    "Season 1": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtChildrenELFF/S2",
+    "Season 3": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtChildrenELFF/S3"
+  },
+  "French": {
+    "Season 1": "https://www.jw.org/fr/biblioth%C3%A8que/vid%C3%A9os/#fr/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/fr/biblioth%C3%A8que/vid%C3%A9os/#fr/categories/VODPgmEvtChildrenELFF/S2"
+  }
+}
+```
+
+## Field Reference
+
+<ParamField path="[language]" type="string" required>
+  The display name for a language group (e.g. `"English"`, `"Spanish"`). This string is shown verbatim in the _Select The Language_ interactive prompt. Use any label that is meaningful to you — the tool does not validate it against a fixed list.
+</ParamField>
+
+<ParamField path="[language][section]" type="string" required>
+  The display name for a section within the language (e.g. `"Season 1"`, `"Season 2"`). This string appears in both the _Select the Section To be Downloaded_ prompt and, when **Grouped** path mode is active, as the name of the subdirectory where that section's videos are saved.
+</ParamField>
+
+<ParamField path="[language][section]" type="string (URL)" required>
+  The full JW.ORG video library page URL for the section. The scraper loads this HTML page and parses every `data-jsonurl` attribute it finds inside `.du-margin-children-vertical-desktopOnly--0` container elements. Each discovered JSON URL is then fetched to retrieve the complete file listing for a single video. Use the URL exactly as it appears in your browser's address bar when you are viewing that category page on JW.ORG.
+</ParamField>
+
+## URL Format
+
+All URLs must point to a JW.ORG video library category page — the kind that renders a grid of video thumbnails. A typical URL looks like:
+
+```
+https://www.jw.org/en/library/videos/#en/categories/<CATEGORY_ID>/<SUBCATEGORY>
+```
+
+<Note>
+  URLs containing a `#` fragment are valid. The scraper fetches the full page HTML, which includes server-rendered markup regardless of the fragment identifier. Copy the URL straight from your browser after navigating to the section you want.
+</Note>
+
+<Warning>
+  Do not point a URL at an individual video page or a search results page. The scraper expects a **category listing** page that embeds `data-jsonurl` attributes in its HTML — individual video pages do not contain these attributes and will yield zero results.
+</Warning>
+
+## How the Tool Loads `config.json`
+
+At startup, `Program.cs` calls:
+
+```csharp
+Dictionary<string, Dictionary<string, string>>? config =
+    await configuration.GetConfig(configFile);
+if (config is null) return;
+```
+
+Internally, `ConfigurationService.GetConfig()` reads the file from the current working directory and deserializes it with `System.Text.Json`:
+
+```csharp
+public async Task<Dictionary<string, Dictionary<string, string>>?> GetConfig(
+    string configFile, CancellationToken token = default)
+{
+    Dictionary<string, Dictionary<string, string>>? config =
+        JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(
+            await fileService.ReadAllText(configFile, token));
+    if (config is not null) return config;
+    logger.Log(ILogger.Level.Error, "No Config File Found", ILogger.Options.Bold);
+    return null;
+}
+```
+
+If the file is absent, unreadable, or not valid JSON, `config` will be `null`. The error **"No Config File Found"** is logged at `Error` level and the program exits immediately — no interactive prompts are shown.
+
+<Warning>
+  The file **must** be named exactly `config.json` and placed in the same directory from which you run the executable. If you launch the tool from a different working directory, the file will not be found even if it exists elsewhere on your system.
+</Warning>
+
+## Structuring Multiple Languages and Sections
+
+<Tip>
+  You can include as many languages and sections as you like. The interactive CLI will present them all at runtime and let you pick exactly what to download — so it is safe to pre-populate `config.json` with every language and season you might ever need, then choose a subset at run time.
+</Tip>
+
+<Accordion title="Minimal single-language example">
+
+```json config.json
+{
+  "English": {
+    "Season 1": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S1"
+  }
+}
+```
+
+This is the smallest valid `config.json`. The CLI will still prompt you to select a language (only `"English"` will appear) and a section (only `"Season 1"` plus the built-in `"All"` option will appear).
+
+</Accordion>
+
+<Accordion title="Multi-language, multi-season example">
+
+```json config.json
+{
+  "English": {
+    "Season 1": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S2",
+    "Season 3": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtChildrenELFF/S3"
+  },
+  "Spanish": {
+    "Season 1": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtChildrenELFF/S2"
+  },
+  "Portuguese": {
+    "Season 1": "https://www.jw.org/pt/biblioteca/videos/#pt/categories/VODPgmEvtChildrenELFF/S1",
+    "Season 2": "https://www.jw.org/pt/biblioteca/videos/#pt/categories/VODPgmEvtChildrenELFF/S2",
+    "Season 3": "https://www.jw.org/pt/biblioteca/videos/#pt/categories/VODPgmEvtChildrenELFF/S3"
+  }
+}
+```
+
+At runtime you will be asked to choose one language, then one section (or "All"). Only the selected subset is scraped and downloaded.
+
+</Accordion>

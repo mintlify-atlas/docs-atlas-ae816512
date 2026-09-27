@@ -1,20 +1,65 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "JW Enjoy Life Scraper"
+sidebarTitle: "Home"
+description: "A .NET 9 CLI tool that scrapes JW.ORG to discover and bulk-download Enjoy Life video publications across languages and resolutions."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+JW Enjoy Life Scraper is an interactive command-line tool written in C# (.NET 9) that automates the discovery and bulk download of *Enjoy Life* video publications from JW.ORG. Configure your target languages and sections in a single JSON file, then let the tool handle scraping, caching, and downloading — all with real-time progress feedback.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get the scraper running and download your first videos in minutes.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Build from source or publish a single-file executable for your platform.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/config-file">
+    Set up your config.json with languages and JW.ORG section URLs.
+  </Card>
+  <Card title="Usage Guide" icon="book-open" href="/guides/workflow">
+    Walk through the full interactive workflow step by step.
+  </Card>
+</CardGroup>
+
+## What it does
+
+The scraper works in three stages:
+
+<Steps>
+  <Step title="Scrape HTML sections">
+    Fetches each JW.ORG section URL from your config, parses the HTML with HtmlAgilityPack, and extracts the JSON API endpoint URLs embedded in the page.
+  </Step>
+  <Step title="Fetch video metadata">
+    Calls each JSON API endpoint in parallel (up to 8 concurrent threads) to retrieve full video metadata — titles, available resolutions, file sizes, and download URLs.
+  </Step>
+  <Step title="Download videos">
+    Streams the selected resolution files to disk, skipping files that already exist at the correct size. Both the HTML and JSON responses are cached locally so repeated runs are fast.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Multi-language support" icon="language">
+    Configure any number of languages in `config.json`. The CLI prompts you to pick one at runtime.
+  </Card>
+  <Card title="Multiple resolutions" icon="film">
+    Choose from 3GP, 240p, 360p, 480p, or 720p. Estimated total download size is shown before you confirm.
+  </Card>
+  <Card title="Smart caching" icon="database">
+    Scraped HTML, JSON responses, and downloaded files are cached on disk. Re-runs only fetch what is new or missing.
+  </Card>
+  <Card title="Flexible file naming" icon="folder">
+    Pick between JW Library-compatible filenames or simple human-readable titles. Organize into flat or section-grouped folders.
+  </Card>
+  <Card title="Parallel downloads" icon="bolt">
+    Up to 8 concurrent HTTP requests for both scraping and downloading, with real-time progress bars in the terminal.
+  </Card>
+  <Card title="Single-file binary" icon="box">
+    Published as a self-contained executable — no .NET runtime installation required on the target machine.
+  </Card>
+</CardGroup>
 
 <Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
+  Start with the [Quickstart](/quickstart) to go from zero to your first downloaded video in under five minutes.
 </Tip>
-
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>

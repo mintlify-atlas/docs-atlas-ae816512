@@ -1,47 +1,195 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with JW Enjoy Life Scraper"
+sidebarTitle: "Quickstart"
+description: "Clone the repo, publish a self-contained binary, drop in a config.json, and run your first bulk Enjoy Life video download in under five minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you through everything you need to go from zero to a running download session. If you want to build the tool from source you will need the .NET 9 SDK installed. If you already have a pre-built binary you can skip straight to [Step 3](#step-3-create-configjson).
 
 ## Prerequisites
 
-Before you begin, you must have:
+- **Git** — to clone the repository.
+- **.NET 9 SDK** — required to build and publish the executable. Download it from [dot.net](https://dotnet.microsoft.com/download/dotnet/9.0). You can verify your installation with:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+```bash
+dotnet --version
+# Should print 9.0.x
+```
 
-## Get started
+<Note>
+  If you are running a pre-built binary obtained from someone else, you do not need the .NET SDK at all — the published executable is fully self-contained.
+</Note>
+
+---
+
+## Steps
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the Repository">
+    Open a terminal and clone the repository to your local machine:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/ekottifiok/jw-enjoy-life-scraper.git
+    cd jw-enjoy-life-scraper
     ```
+
+    The repository contains two projects: `Lib/` (scraping logic) and `Console/` (the interactive CLI entry point).
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Build and Publish the Executable">
+    Use `dotnet publish` to produce a single self-contained executable for your platform. Replace `<RID>` with the Runtime Identifier that matches your operating system and CPU architecture (see the table below).
 
     ```bash
-    your-cli init
+    dotnet publish Console/Console.csproj -c Release -r <RID> --self-contained
     ```
+
+    **Common Runtime Identifiers:**
+
+    | Platform | RID |
+    |---|---|
+    | Windows 64-bit (Intel/AMD) | `win-x64` |
+    | Windows 64-bit (ARM) | `win-arm64` |
+    | Linux 64-bit (Intel/AMD) | `linux-x64` |
+    | Linux 64-bit (ARM, e.g. Raspberry Pi) | `linux-arm64` |
+    | macOS (Intel) | `osx-x64` |
+    | macOS (Apple Silicon) | `osx-arm64` |
+
+    For example, on an Apple Silicon Mac:
+
+    ```bash
+    dotnet publish Console/Console.csproj -c Release -r osx-arm64 --self-contained
+    ```
+
+    The compiled binary is placed under:
+
+    ```
+    Console/bin/Release/net9.0/<RID>/publish/
+    ```
+
+    <Tip>
+      `PublishSingleFile=true` is already set in `Console/Console.csproj`, so the output is a single executable file — no extra `.dll` files to carry around.
+    </Tip>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Create config.json">
+    The tool reads a `config.json` file from the **same directory as the executable** (or your current working directory when you run it). This file tells the scraper which JW.ORG section URLs to visit and under which language and section names to organize them.
+
+    The structure is a JSON object whose keys are language names. Each language maps to another object where keys are human-readable section names and values are the corresponding JW.ORG video category URLs.
+
+    ```json
+    {
+      "English": {
+        "Unit 1": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtMorn/VODPgmEvtMornUnit1/",
+        "Unit 2": "https://www.jw.org/en/library/videos/#en/categories/VODPgmEvtMorn/VODPgmEvtMornUnit2/"
+      },
+      "Spanish": {
+        "Unidad 1": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtMorn/VODPgmEvtMornUnit1/",
+        "Unidad 2": "https://www.jw.org/es/biblioteca/videos/#es/categories/VODPgmEvtMorn/VODPgmEvtMornUnit2/"
+      }
+    }
     ```
+
+    <Note>
+      The outer key (e.g. `"English"`) is what appears in the **Select The Language** prompt at runtime. The inner key (e.g. `"Unit 1"`) appears in the **Select the Section To be Downloaded** prompt. Choose names that are meaningful to you.
+    </Note>
+
+    Place `config.json` in the same directory as your published executable before running it.
+  </Step>
+
+  <Step title="Run the Executable and Follow the Prompts">
+    Navigate to the directory containing your published binary and run it:
+
+    <Tabs>
+      <Tab title="macOS / Linux">
+        ```bash
+        # Make the binary executable (first time only)
+        chmod +x ./Console
+
+        ./Console
+        ```
+      </Tab>
+      <Tab title="Windows">
+        ```powershell
+        .\Console.exe
+        ```
+      </Tab>
+    </Tabs>
+
+    The tool launches a styled interactive session. Here is what the full prompt sequence looks like:
+
+    ```
+     ___        __   ____                                
+    |_  |_    _/ /  / ___|  ___ _ __ __ _ _ __   ___ _ __ 
+      | \ \  / / /   \___ \ / __| '__/ _` | '_ \ / _ \ '__|
+    /\| |\ \/ / /     ___) | (__| | | (_| | |_) |  __/ |   
+    \____/ \__/_/     |____/ \___|_|  \__,_| .__/ \___|_|   
+                                           |_|              
+
+    Welcome to the Enjoy life Scrapper. A CLI that scrapes JW.ORG and gets
+    enjoy life videos to download in bulk
+    Config Found
+
+    Starting to Scrape the HTML
+    HTML Progress: ████████████████████ 100%
+
+    Starting to Scrape the JSON
+    JSON Progress: ████████████████████ 100%
+
+    > Select the Section To be Downloaded:
+        All
+        Unit 1
+        Unit 2
+
+    > Select The Resolution:
+        3GP: 312.5 MB
+        240p: 680.3 MB
+        360p: 1.2 GB
+        480p: 2.1 GB
+        720p: 4.4 GB
+
+    > What is the directory to store the files(empty is the current directory)?
+      (press Enter for current directory)
+
+    > Select The File Name Type:
+        JW Library Style (Difficult to Read File Name)
+        Simple (Easy to Read File Name)
+
+    > Select The File Path Type:
+        JW Library Style (Videos divided by Section [config])
+        Simple (All Videos in one Directory)
+
+    Starting to Download the Files
+    Download Progress: ████████████████████ 100%
+    ```
+
+    <Tip>
+      On the resolution prompt, the sizes shown are the **sum of all video files** at that resolution for your selected section(s). This lets you gauge disk space requirements before committing to a download.
+    </Tip>
+
+    Once the download completes, your videos are in the `files/` directory (or whichever path you specified). A `.cache/` directory is also created alongside the executable to store HTTP responses for faster re-runs.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+---
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+## What Happens Next
+
+After your first run you will notice two new directories beside your executable:
+
+- **`files/`** — contains the downloaded video files, organized according to your chosen path mode.
+- **`.cache/`** — contains SHA-256-keyed cache files for every HTML page and JSON response the tool has fetched. Future runs reuse these files and skip network requests entirely for already-seen URLs.
+
+<Note>
+  Re-running the tool after a partial download is safe. Any video file that already exists on disk at the correct byte size is skipped automatically.
+</Note>
+
+For a full reference on all `config.json` options and detailed build instructions for every platform, see the pages below.
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="wrench" href="/installation">
+    Full build-from-source and publish instructions with a Runtime Identifier reference table for all supported platforms.
+  </Card>
+  <Card title="Introduction" icon="book-open" href="/introduction">
+    Learn about every feature the tool offers and how the three-stage scrape-configure-download pipeline works under the hood.
+  </Card>
+</CardGroup>

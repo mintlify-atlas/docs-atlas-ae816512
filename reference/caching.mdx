@@ -1,0 +1,240 @@
+---
+title: "Disk caching — how the scraper avoids redundant requests"
+sidebarTitle: "Caching"
+description: "How CacheService stores HTML, JSON, and video files under .cache/ using SHA-256 keys, and how each cache method checks for existing data before making any network request."
+---
+
+`CacheService` sits between the `WebScraper` and the network: every HTML page, JSON API response, and binary video file is stored on disk the first time it is fetched. On subsequent runs, the scraper reads from disk instead of making a network request. This makes re-runs near-instant for content that has already been scraped, and it means interrupted downloads can resume without re-fetching already-cached responses.
+
+The cache lives in a `.cache/` directory created automatically in the current working directory when `CacheService` is constructed. The constructor calls `IFileService.CreateDirectory(".cache")`, which is a no-op if the directory already exists.
+
+---
+
+## Cache key generation
+
+All cache file names are derived from a SHA-256 hash of the input string (a URL or HTML body). The hash is computed by `Helper.GenerateHash`:
+
+```csharp
+public static string GenerateHash(string input)
+{
+    byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+    return Convert.ToHexStringLower(hash);
+}
+```
+
+The function returns a 64-character lowercase hexadecimal string. A file extension is then appended depending on the content type:
+
+| Content type | File name pattern | Written by |
+|---|---|---|
+| HTML / plain text | `<hash>.txt` | `GetText` |
+| JSON API response | `<hash>.json` | `GetJson<T>` |
+| Generic serialized object | `<hash>` (no extension) | `Set<T>` |
+| Binary video file | `SanitizeFileName(filename)` in target dir | `Download` |
+
+<Note>
+  Video files are the only exception to the hash-based naming scheme. They are written directly to the user-chosen download directory using the sanitized original file name, not the `.cache/` directory. This is so that the downloaded videos are accessible to the user at a predictable path.
+</Note>
+
+---
+
+## Cache method behavior
+
+<Tabs>
+  <Tab title="GetText">
+    `GetText(url)` caches the HTML or plain-text response from a URL as a `.txt` file.
+
+    ```csharp
+    public async Task<string?> GetText(string url, CancellationToken token = default)
+    {
+        string cacheFilePath = Path.Combine(_cacheDir, Helper.GenerateHash(url) + ".txt");
+        if (_fileService.Exists(cacheFilePath)) return await _fileService.ReadAllText(cacheFilePath, token);
+
+        string? text = await _client.GetString(url, token);
+        if (text is null) return null;
+
+        await WriteToFile(cacheFilePath, text, token);
+        return text;
+    }
+    ```
+
+    **Flow:**
+    1. Compute `<hash>.txt` path.
+    2. If the file exists → read and return it. No network request.
+    3. Otherwise → call `IHttpClient.GetString(url)`.
+    4. If the response is non-null → write to `<hash>.txt`, then return the string.
+    5. If the response is null → return `null` without writing anything.
+  </Tab>
+  <Tab title="GetJson&lt;T&gt;">
+    `GetJson<T>(url)` caches a serialized JSON API response as a `.json` file.
+
+    ```csharp
+    public async Task<T?> GetJson<T>(string url, CancellationToken token = default) where T : class
+    {
+        string cacheFilePath = Path.Combine(_cacheDir, Helper.GenerateHash(url) + ".json");
+        if (_fileService.Exists(cacheFilePath))
+            return JsonSerializer.Deserialize<T>(await _fileService.ReadAllText(cacheFilePath, token));
+
+        T? response = await _client.GetJson<T>(url, token);
+        if (response == null) return null;
+
+        await WriteToFile(cacheFilePath, JsonSerializer.Serialize(response), token);
+        return response;
+    }
+    ```
+
+    **Flow:**
+    1. Compute `<hash>.json` path.
+    2. If the file exists → read its text and deserialize with `JsonSerializer.Deserialize<T>`. No network request.
+    3. Otherwise → call `IHttpClient.GetJson<T>(url)`.
+    4. If the response is non-null → serialize it and write to `<hash>.json`, then return the object.
+    5. If the response is null → return `null`.
+  </Tab>
+  <Tab title="Get&lt;T&gt; / Set&lt;T&gt;">
+    `Set<T>` / `Get<T>` provide a generic JSON cache keyed by any arbitrary string. Used by `WebScraper.ScrapeHtml` to cache parsed HTML node lists.
+
+    ```csharp
+    public async Task Set<T>(string key, T value, CancellationToken token = default)
+    {
+        string cacheFilePath = Path.Combine(_cacheDir, Helper.GenerateHash(key));
+        if (File.Exists(cacheFilePath)) return;
+
+        await WriteToFile(cacheFilePath, value, token, isJson: true);
+    }
+
+    public async Task<T?> Get<T>(string key, CancellationToken token = default) where T : class
+    {
+        string cacheFilePath = Path.Combine(_cacheDir, Helper.GenerateHash(key));
+        if (!_fileService.Exists(cacheFilePath)) return null;
+
+        await using FileStream stream = File.OpenRead(cacheFilePath);
+        return await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: token);
+    }
+    ```
+
+    **`Set<T>` flow:**
+    1. Compute the hash of `key` (no extension).
+    2. If the cache file already exists → return immediately. No write.
+    3. Otherwise → serialize `value` as JSON and write to the hash file.
+
+    **`Get<T>` flow:**
+    1. Compute the hash of `key`.
+    2. If the file does not exist → return `null`.
+    3. Otherwise → open the file as a stream and deserialize with `JsonSerializer.DeserializeAsync<T>`.
+  </Tab>
+  <Tab title="Download">
+    `Download(dir, url, filename, fileSize)` downloads a binary file (video) and saves it to the user-chosen output directory.
+
+    ```csharp
+    public async Task<bool> Download(string dir, string url, string filename, int fileSize,
+        CancellationToken token = default)
+    {
+        string cacheFilePath = Path.Combine(dir, Helper.SanitizeFileName(filename));
+        FileInfo fileInfo = _fileService.GetFileData(cacheFilePath);
+        if (fileInfo.Exists && fileInfo.Length == fileSize) return true;
+
+        Stream? downloadStream = _client.DownloadStream(url, token);
+        if (downloadStream is null) return false;
+
+        _fileService.CreateDirectory(dir);
+        await using FileStream fileStream = _fileService.Create(cacheFilePath);
+        await downloadStream.CopyToAsync(fileStream, token);
+        return true;
+    }
+    ```
+
+    **Flow:**
+    1. Sanitize `filename` with `Helper.SanitizeFileName` (replaces invalid file-name chars with `_`).
+    2. Build the full path as `Path.Combine(dir, sanitizedFilename)`.
+    3. Call `IFileService.GetFileData` to retrieve a `FileInfo`.
+    4. If `FileInfo.Exists` is `true` **and** `FileInfo.Length == fileSize` → return `true`. File is complete; skip download.
+    5. Otherwise → open a download stream via `IHttpClient.DownloadStream`.
+    6. If the stream is null → return `false`.
+    7. Ensure `dir` exists via `CreateDirectory`, create the output file, and copy the stream into it.
+    8. Return `true` on completion.
+
+    <Tip>
+      The size check (`FileInfo.Length == fileSize`) catches partially downloaded files. If a previous run was interrupted mid-stream, the incomplete file will be re-downloaded on the next run.
+    </Tip>
+  </Tab>
+</Tabs>
+
+---
+
+## Cache directory layout
+
+After a typical run, the `.cache/` directory contains a mix of `.txt`, `.json`, and extension-less files:
+
+```
+.cache/
+├── 3f2a1c...d8e4.txt          # HTML body of a JW.ORG section page
+├── 7b09fa...12cc.txt          # HTML body of another section page
+├── a1d3e9...55f0.json         # Deserialized JsonResponse for one video
+├── c8ef12...9901.json         # Deserialized JsonResponse for another video
+├── 0044ab...7712              # Cached List<string> of JSON URLs (no extension)
+└── 9f3c44...bb01              # Another cached List<string>
+```
+
+Downloaded video files are **not** stored in `.cache/` — they are written directly to the user-chosen output directory (default: `files/` in the working directory).
+
+```
+files/
+├── Lesson 01 - Why Are We Here.mp4
+├── Lesson 02 - Who Is God.mp4
+└── section-name/              # present when DownloadFilePathType.Grouped is used
+    └── Lesson 03 - ...mp4
+```
+
+---
+
+## Clearing the cache
+
+To force the scraper to re-fetch all HTML pages and JSON responses on the next run, delete the `.cache/` directory:
+
+```bash
+rm -rf .cache/
+```
+
+The directory will be re-created automatically on the next run. All network requests will be made fresh and cached again.
+
+<Note>
+  Clearing the cache does **not** delete any downloaded video files. Those live in the output directory (`files/` by default) and are managed separately.
+</Note>
+
+---
+
+## `WriteToFile` and error handling
+
+All writes to `.cache/` go through the private `WriteToFile` method:
+
+```csharp
+private async Task WriteToFile<T>(string path, T text, CancellationToken token, bool isJson = false)
+{
+    try
+    {
+        if (!isJson)
+        {
+            await _fileService.WriteAllText(path, text?.ToString() ?? "", token);
+            return;
+        }
+
+        await using FileStream stream = new(path, FileMode.Create);
+        await JsonSerializer.SerializeAsync(stream, text, cancellationToken: token);
+    }
+    catch (IOException)
+    {
+    }
+    catch (Exception exception)
+    {
+        _logger.Log(ILogger.Level.Error, $"Exception: {exception.Message}");
+    }
+}
+```
+
+The method has two distinct error-handling paths:
+
+- **`IOException`** — silently swallowed with no log output. This is intentional: because up to 8 parallel tasks may attempt to write the same cache file simultaneously (when multiple sections share overlapping URLs), `IOException` is expected and harmless. The second writer simply fails quietly; the first writer's file remains valid.
+- **Any other `Exception`** — logged at `ILogger.Level.Error`. These represent unexpected failures such as serialization errors or disk-full conditions.
+
+<Note>
+  `isJson = true` routes through `JsonSerializer.SerializeAsync` directly into a `FileStream`, bypassing `IFileService.WriteAllText`. This is used by `Set<T>` for generic object caching. Plain text writes (`GetText`, `GetJson`) pass `isJson = false` and use `IFileService.WriteAllText` instead.
+</Note>
